@@ -1,4 +1,3 @@
-# <prefix in this repo> <prefix in cursor/plugins>
 t3stack pstack
 team-kit/skills/deslop cursor-team-kit/skills/deslop
 team-kit/skills/control-ui cursor-team-kit/skills/control-ui
