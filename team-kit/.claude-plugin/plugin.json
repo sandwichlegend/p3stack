@@ -1,0 +1,10 @@
+{
+  "name": "t3stack-team-kit",
+  "description": "The three cursor-team-kit skills t3stack calls: deslop, control-ui, control-cli.",
+  "author": {
+    "name": "Eric Zakariasson"
+  },
+  "homepage": "https://github.com/sandwichlegend/t3stack",
+  "repository": "https://github.com/sandwichlegend/t3stack",
+  "license": "MIT"
+}

@@ -46,7 +46,8 @@ ours=(
   team-kit/plugin.json team-kit/.claude-plugin/plugin.json team-kit/.cursor-plugin/plugin.json
 )
 for f in "${ours[@]}"; do
-  python3 -m json.tool "$f" >/dev/null || fail "$f is not valid JSON"
+  [[ -f "$f" ]] || fail "$f is missing"
+  python3 -m json.tool "$f" >/dev/null 2>&1 || fail "$f is not valid JSON"
 done
 for f in "${ours[@]}"; do
   [[ "$f" == *marketplace.json ]] && continue
@@ -71,4 +72,4 @@ done_=$(comm -13 <(with_terms) <(echo "$listed"))
 [[ -z "$done_" ]] || fail "These files are fully ported. Drop them from scripts/unported.txt:
 $(sed 's/^/  /' <<<"$done_")"
 
-echo "t3stack checks pass ($(wc -l <<<"$listed" | tr -d ' ') files left to port)"
+echo "t3stack checks pass ($(grep -c . <<<"$listed" || true) files left to port)"

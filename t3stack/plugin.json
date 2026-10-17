@@ -1,21 +1,22 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "pstack",
-  "version": "0.15.25",
-  "description": "if you want to go fast, go deep first. pstack helps you write less, but higher quality code. rigorous agent workflows you can parallelize with confidence.",
+  "name": "t3stack",
+  "description": "poteto's pstack, rewritten to run in T3 Code on Orchestrator V2. if you want to go fast, go deep first.",
   "author": {
     "name": "Lauren Tan"
   },
-  "homepage": "https://github.com/cursor/plugins/tree/main/pstack",
-  "repository": "https://github.com/cursor/plugins",
+  "homepage": "https://github.com/sandwichlegend/t3stack",
+  "repository": "https://github.com/sandwichlegend/t3stack",
   "license": "MIT",
   "keywords": [
-    "pstack",
+    "t3stack",
+    "t3code",
     "poteto-mode",
     "workflow",
     "principles",
     "agent-style",
     "subagents",
-    "unslop"
+    "unslop",
+    "pstack"
   ]
 }
