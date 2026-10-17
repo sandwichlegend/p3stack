@@ -20,7 +20,7 @@ ${rule}
 ### PR mechanics
 ### Verdict and merge
 ### Boot recipe
-\`git show origin/main:\` /loop 1h status message
+skills/poteto-mode/playbooks/opening-a-pr.md schedule_task status message
 
 ## PR 1
 **Depends on.** None.
