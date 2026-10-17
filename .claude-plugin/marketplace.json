@@ -3,6 +3,9 @@
   "owner": {
     "name": "Liam Gandelsman"
   },
+  "metadata": {
+    "description": "pstack for T3 Code: poteto's engineering workflow on Orchestrator V2"
+  },
   "plugins": [
     {
       "name": "t3stack",

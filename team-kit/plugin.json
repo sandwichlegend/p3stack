@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "t3stack-team-kit",
-  "description": "The three cursor-team-kit skills t3stack calls: deslop, control-ui, control-cli.",
+  "description": "The deslop, control-ui, and control-cli skills t3stack calls, from Cursor's team kit.",
   "author": {
     "name": "Eric Zakariasson"
   },
