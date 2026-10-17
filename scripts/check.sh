@@ -28,7 +28,7 @@ cursor_only_terms=(
   "create-skill|Cursor's (built-in|own)|restart Cursor|Cursor restart|Cursor Projects?\\b"
 )
 pattern=$(IFS='|'; echo "${cursor_only_terms[*]}")
-scan() { git ls-files -z -- t3stack team-kit | xargs -0 grep -I "$@" -E "$pattern" -- || true; }
+scan() { git ls-files -z -- p3stack team-kit | xargs -0 grep -I "$@" -E "$pattern" -- || true; }
 with_terms() { scan -l | sort; }
 
 if [[ "${1:-}" == "--terms" ]]; then
@@ -41,7 +41,7 @@ for f in scripts/subtrees.txt scripts/removed.txt scripts/unported.txt; do
 done
 
 manifests=(
-  t3stack/plugin.json t3stack/.claude-plugin/plugin.json t3stack/.cursor-plugin/plugin.json
+  p3stack/plugin.json p3stack/.claude-plugin/plugin.json p3stack/.cursor-plugin/plugin.json
   team-kit/plugin.json team-kit/.claude-plugin/plugin.json team-kit/.cursor-plugin/plugin.json
 )
 marketplaces=(.claude-plugin/marketplace.json .cursor-plugin/marketplace.json .agents/plugins/marketplace.json)
@@ -53,16 +53,16 @@ for f in "${manifests[@]}"; do
   python3 -c 'import json,sys; sys.exit("version" in json.load(open(sys.argv[1])))' "$f" ||
     fail "$f sets a version. Leave it out so each commit to main counts as an update."
   folder=${f%%/*}
-  want=t3stack
-  [[ "$folder" == team-kit ]] && want=t3stack-team-kit
+  want=p3stack
+  [[ "$folder" == team-kit ]] && want=p3stack-team-kit
   got=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$f")
   [[ "$got" == "$want" ]] || fail "$f is named $got, not $want"
 done
 
-hook=t3stack/hooks/session-start
+hook=p3stack/hooks/session-start
 [[ -x "$hook" ]] || fail "$hook is missing or not executable"
 out=$("$hook") || fail "$hook exited nonzero"
-[[ "$out" != *@T3STACK_ROOT@* ]] || fail "$hook left @T3STACK_ROOT@ unexpanded"
+[[ "$out" != *@P3STACK_ROOT@* ]] || fail "$hook left @P3STACK_ROOT@ unexpanded"
 mode=$(grep -oE '[^`]*/skills/poteto-mode/SKILL\.md' <<<"$out" | head -1)
 [[ -f "$mode" ]] || fail "$hook points at a missing file: $mode"
 
@@ -84,4 +84,4 @@ finished=$(comm -13 <(with_terms) <(printf '%s\n' "$listed" | grep -v '^$' || tr
 $(sed 's/^/  /' <<<"$finished")"
 
 left=$(grep -c . <<<"$listed" || true)
-echo "t3stack checks pass ($left files left to port)"
+echo "p3stack checks pass ($left files left to port)"

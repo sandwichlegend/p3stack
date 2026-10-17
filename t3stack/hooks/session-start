@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-hooks_dir=$(cd "${BASH_SOURCE[0]%/*}" && pwd)
-root=${hooks_dir%/hooks}
-context=$(<"$hooks_dir/session-start-context.md")
-printf '%s\n' "${context//@T3STACK_ROOT@/$root}"

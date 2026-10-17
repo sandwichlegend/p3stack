@@ -15,7 +15,7 @@ else
 fi
 echo "upstream cursor/plugins at $(git rev-parse --short "$upstream")"
 
-ours_on_conflict=(t3stack/plugin.json t3stack/.cursor-plugin/plugin.json)
+ours_on_conflict=(p3stack/plugin.json p3stack/.cursor-plugin/plugin.json)
 under_removed() {
   local path=$1 prefix
   while IFS= read -r prefix; do
@@ -80,7 +80,7 @@ while IFS= read -r prefix; do
   dropped=1
 done <scripts/removed.txt
 if [[ "$dropped" == 1 ]]; then
-  git commit -q -m "Drop upstream files that t3stack removes"
+  git commit -q -m "Drop upstream files that p3stack removes"
   echo "dropped upstream files under scripts/removed.txt"
 fi
 

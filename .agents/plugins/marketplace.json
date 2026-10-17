@@ -1,14 +1,14 @@
 {
-  "name": "t3stack",
+  "name": "p3stack",
   "interface": {
-    "displayName": "t3stack"
+    "displayName": "p3stack"
   },
   "plugins": [
     {
-      "name": "t3stack",
+      "name": "p3stack",
       "source": {
         "source": "local",
-        "path": "./t3stack"
+        "path": "./p3stack"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -20,7 +20,7 @@
       "category": "Developer Tools"
     },
     {
-      "name": "t3stack-team-kit",
+      "name": "p3stack-team-kit",
       "source": {
         "source": "local",
         "path": "./team-kit"

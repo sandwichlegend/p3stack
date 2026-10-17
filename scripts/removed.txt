@@ -1,2 +1,2 @@
-t3stack/automations
-t3stack/docs/harness
+p3stack/automations
+p3stack/docs/harness

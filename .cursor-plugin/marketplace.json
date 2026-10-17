@@ -1,5 +1,5 @@
 {
-  "name": "t3stack",
+  "name": "p3stack",
   "owner": {
     "name": "Liam Gandelsman"
   },
@@ -8,14 +8,14 @@
   },
   "plugins": [
     {
-      "name": "t3stack",
-      "source": "t3stack",
+      "name": "p3stack",
+      "source": "p3stack",
       "description": "poteto's pstack, rewritten to run in T3 Code on Orchestrator V2. if you want to go fast, go deep first."
     },
     {
-      "name": "t3stack-team-kit",
+      "name": "p3stack-team-kit",
       "source": "team-kit",
-      "description": "The three cursor-team-kit skills t3stack calls: deslop, control-ui, control-cli."
+      "description": "The three cursor-team-kit skills p3stack calls: deslop, control-ui, control-cli."
     }
   ]
 }

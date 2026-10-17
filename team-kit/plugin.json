@@ -1,11 +1,11 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "t3stack-team-kit",
-  "description": "The deslop, control-ui, and control-cli skills t3stack calls, from Cursor's team kit.",
+  "name": "p3stack-team-kit",
+  "description": "The deslop, control-ui, and control-cli skills p3stack calls, from Cursor's team kit.",
   "author": {
     "name": "Eric Zakariasson"
   },
-  "homepage": "https://github.com/sandwichlegend/t3stack",
-  "repository": "https://github.com/sandwichlegend/t3stack",
+  "homepage": "https://github.com/sandwichlegend/p3stack",
+  "repository": "https://github.com/sandwichlegend/p3stack",
   "license": "MIT"
 }
