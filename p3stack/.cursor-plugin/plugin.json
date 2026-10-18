@@ -1,0 +1,32 @@
+{
+	"name": "p3stack",
+	"displayName": "p3stack",
+	"description": "poteto's pstack, rewritten to run in T3 Code on Orchestrator V2. if you want to go fast, go deep first.",
+	"author": {
+		"name": "Lauren Tan"
+	},
+	"homepage": "https://github.com/sandwichlegend/p3stack",
+	"repository": "https://github.com/sandwichlegend/p3stack",
+	"license": "MIT",
+	"logo": "assets/logo.png",
+	"keywords": [
+		"p3stack",
+		"t3code",
+		"poteto-mode",
+		"workflow",
+		"principles",
+		"agent-style",
+		"subagents",
+		"unslop",
+		"pstack"
+	],
+	"category": "developer-tools",
+	"tags": [
+		"workflow",
+		"principles",
+		"review",
+		"planning"
+	],
+	"skills": "./skills/",
+	"agents": "./agents/"
+}

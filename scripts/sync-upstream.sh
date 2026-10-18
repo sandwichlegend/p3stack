@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# Pull cursor/plugins changes into t3stack. Each line of scripts/subtrees.txt
-# maps a folder here to a folder upstream. The upstream folder's history is
-# split out with `git subtree split`, which gives the same commit ids every run,
-# then subtree-merged into the folder here, so only real edits conflict.
-# Pass a ref to merge something other than cursor/plugins main (for testing).
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -20,16 +15,37 @@ else
 fi
 echo "upstream cursor/plugins at $(git rev-parse --short "$upstream")"
 
-# Manifests are ours. Upstream bumps their version on every release.
-ours_on_conflict=(t3stack/plugin.json t3stack/.cursor-plugin/plugin.json)
+ours_on_conflict=(p3stack/plugin.json p3stack/.cursor-plugin/plugin.json)
+under_removed() {
+  local path=$1 prefix
+  while IFS= read -r prefix; do
+    [[ -z "$prefix" ]] && continue
+    [[ "$path" == "$prefix" || "$path" == "$prefix"/* ]] && return 0
+  done <scripts/removed.txt
+  return 1
+}
+
+settle_known_paths() {
+  local path
+  for path in "${ours_on_conflict[@]}"; do
+    if git diff --name-only --diff-filter=U | grep -qxF "$path"; then
+      git checkout --ours -- "$path"
+      git add -- "$path"
+    fi
+  done
+  while read -r path; do
+    if [[ -n "$path" ]] && under_removed "$path"; then
+      git rm -qf --ignore-unmatch -- "$path"
+    fi
+  done < <(git diff --name-only --diff-filter=U; git diff --cached --name-only --diff-filter=A)
+}
 
 while read -r here there; do
-  [[ -z "$here" || "$here" == \#* ]] && continue
+  [[ -z "$here" ]] && continue
   split=$(git subtree split -q --prefix="$there" "$upstream")
   git update-ref "refs/upstream/split/${here//\//-}" "$split"
   if [[ ! -d "$here" ]]; then
-    git subtree add -q --prefix="$here" "$split" \
-      -m "Add $here from cursor/plugins $there"
+    git subtree add -q --prefix="$here" "$split" -m "Add $here from cursor/plugins $there"
     echo "added $here"
     continue
   fi
@@ -37,25 +53,35 @@ while read -r here there; do
     echo "$here is up to date"
     continue
   fi
-  if git subtree merge -q --prefix="$here" "$split" \
-    -m "Merge cursor/plugins $there into $here"; then
+  if git subtree merge -q --prefix="$here" "$split" -m "Merge cursor/plugins $there into $here" 2>/dev/null; then
     echo "merged $here"
     continue
   fi
-  for f in "${ours_on_conflict[@]}"; do
-    if git diff --name-only --diff-filter=U | grep -qxF "$f"; then
-      git checkout --ours -- "$f" && git add "$f"
-    fi
-  done
+  git rev-parse -q --verify MERGE_HEAD >/dev/null || {
+    echo "git subtree merge failed before merging $there. Nothing was changed." >&2
+    exit 1
+  }
+  settle_known_paths
   left=$(git diff --name-only --diff-filter=U)
   if [[ -n "$left" ]]; then
     echo "Conflicts merging $there into $here. Port upstream's intent to T3, then run:" >&2
-    echo "  git commit --no-edit && scripts/sync-upstream.sh" >&2
+    echo "  git add <files> && git commit --no-edit && scripts/sync-upstream.sh" >&2
     sed 's/^/  /' <<<"$left" >&2
     exit 1
   fi
   git commit -q --no-edit
-  echo "merged $here (kept our manifests)"
+  echo "merged $here, keeping our manifests and removals"
 done <scripts/subtrees.txt
+
+dropped=0
+while IFS= read -r prefix; do
+  [[ -z "$prefix" || -z "$(git ls-files -- "$prefix")" ]] && continue
+  git rm -rqf --ignore-unmatch -- "$prefix"
+  dropped=1
+done <scripts/removed.txt
+if [[ "$dropped" == 1 ]]; then
+  git commit -q -m "Drop upstream files that p3stack removes"
+  echo "dropped upstream files under scripts/removed.txt"
+fi
 
 scripts/check.sh
