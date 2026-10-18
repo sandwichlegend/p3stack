@@ -8,16 +8,23 @@ The plugin's own [README](./p3stack/README.md) and [guide](./p3stack/docs/guide/
 
 ## Install
 
-Install both plugins into every provider you use in T3. Each provider loads plugins its own way.
+T3 doesn't install plugins itself. It runs Claude Code, Codex, and Cursor, and each of them loads plugins from its own folder on your machine. So install p3stack from a terminal, once for each of those tools you use in T3. Threads you start or resume afterward pick it up.
 
-Claude Code:
+You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, which carries `deslop`, `control-ui`, and `control-cli`. Install both.
 
-```text
-/plugin install p3stack --marketplace sandwichlegend/p3stack
-/plugin install p3stack-team-kit@p3stack
+### Claude Code
+
+```shell
+claude plugin marketplace add sandwichlegend/p3stack
+claude plugin install p3stack@p3stack
+claude plugin install p3stack-team-kit@p3stack
 ```
 
-Codex:
+Inside a Claude Code session, `/plugin install p3stack --marketplace sandwichlegend/p3stack` does the same for the main plugin.
+
+T3's Claude threads then load the skills, the `poteto-agent` and `comment-sicko` agents, and the startup hook that points every session at `/poteto-mode`.
+
+### Codex
 
 ```shell
 codex plugin marketplace add sandwichlegend/p3stack
@@ -25,13 +32,107 @@ codex plugin add p3stack@p3stack
 codex plugin add p3stack-team-kit@p3stack
 ```
 
-Codex asks you to trust the session hook on first run, and again after the hook changes.
+T3's Codex threads then load the skills. Codex ignores hooks that ship inside a plugin, so the startup hook needs two more steps:
 
-Cursor: add `https://github.com/sandwichlegend/p3stack` as a plugin marketplace, then install `p3stack` and `p3stack-team-kit`.
+1. Add this entry to the `hooks.SessionStart` list in `~/.codex/hooks.json`. Create the file with `{"hooks": {"SessionStart": []}}` first if you don't have one.
 
-Then run `/setup-pstack` once in any T3 thread. It reads the models T3 can run and writes `~/.p3stack/models.md`.
+   ```json
+   {
+     "hooks": [
+       {
+         "type": "command",
+         "command": "\"$HOME/.codex/plugins/cache/p3stack/p3stack/1.0.0/hooks/session-start\"",
+         "timeout": 10
+       }
+     ]
+   }
+   ```
+
+2. Run `codex` in a terminal, type `/hooks`, and trust the new hook. Codex skips hooks you haven't trusted, and T3 can't ask you, so a hook you skip here never runs in T3.
+
+Without the hook, ask for poteto-mode by name at the start of each task.
+
+### Cursor
+
+Cursor installs third-party plugins only through team marketplaces, which need a Teams admin. It also loads any plugin folder in `~/.cursor/plugins/local/`, so clone the repository and copy both plugins there. Copy them, don't link them: Cursor skips symlinked plugin folders.
+
+```shell
+git clone https://github.com/sandwichlegend/p3stack.git ~/.p3stack/repo
+mkdir -p ~/.cursor/plugins/local
+cp -R ~/.p3stack/repo/p3stack ~/.cursor/plugins/local/p3stack
+cp -R ~/.p3stack/repo/team-kit ~/.cursor/plugins/local/p3stack-team-kit
+```
+
+If you also have Cursor's own `pstack` plugin installed, turn it off in Cursor's Customize panel. Both plugins ship skills named `poteto-mode` and `setup-pstack`, and a thread may pick the Cursor-only copy.
+
+Cursor doesn't run the startup hook, so type `/poteto-mode` at the start of each task in a Cursor thread.
+
+### Then
+
+Run `/setup-pstack` once in any T3 thread. It reads the models T3 can run and writes `~/.p3stack/models.md`.
+
+## Update
 
 The manifests leave out `version`, so each commit to `main` is a release.
+
+Claude Code:
+
+```shell
+claude plugin marketplace update p3stack
+claude plugin update p3stack@p3stack
+claude plugin update p3stack-team-kit@p3stack
+```
+
+To update automatically instead, run `/plugin` in Claude Code, open Marketplaces, pick `p3stack`, and turn on auto-update.
+
+Codex:
+
+```shell
+codex plugin marketplace upgrade p3stack
+codex plugin add p3stack@p3stack
+codex plugin add p3stack-team-kit@p3stack
+```
+
+If Codex asks you to trust the startup hook again, trust it with `/hooks`.
+
+Cursor:
+
+```shell
+git -C ~/.p3stack/repo pull
+rm -rf ~/.cursor/plugins/local/p3stack ~/.cursor/plugins/local/p3stack-team-kit
+cp -R ~/.p3stack/repo/p3stack ~/.cursor/plugins/local/p3stack
+cp -R ~/.p3stack/repo/team-kit ~/.cursor/plugins/local/p3stack-team-kit
+```
+
+Start a new thread, or resume one, to load the update.
+
+## Uninstall
+
+Claude Code:
+
+```shell
+claude plugin uninstall p3stack@p3stack
+claude plugin uninstall p3stack-team-kit@p3stack
+claude plugin marketplace remove p3stack
+```
+
+Codex:
+
+```shell
+codex plugin remove p3stack@p3stack
+codex plugin remove p3stack-team-kit@p3stack
+codex plugin marketplace remove p3stack
+```
+
+Then delete the p3stack entry from `~/.codex/hooks.json`.
+
+Cursor:
+
+```shell
+rm -rf ~/.cursor/plugins/local/p3stack ~/.cursor/plugins/local/p3stack-team-kit
+```
+
+Your model choices and run files stay in `~/.p3stack/`, along with the Cursor clone. Delete that folder to remove them too.
 
 ## What changed from pstack
 
