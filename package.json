@@ -1,0 +1,8 @@
+{
+  "name": "p3stack",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./opencode/plugin.ts"
+  }
+}
