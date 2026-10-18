@@ -122,7 +122,8 @@ codex_hook_add() {
   fi
   add_task="In $codex_hooks, add a SessionStart hook of type \"command\" that runs the executable $script with timeout 10, quoting the path for the shell and escaping it for JSON. Keep every existing entry as it is."
   trust_codex_hook=1
-  if [[ $script == *[\"\\\`\$]* ]]; then
+  local plain='^[A-Za-z0-9/._ @+-]+$'
+  if ! [[ $script =~ $plain ]]; then
     say "the hook path has characters the installer won't write by hand, so your agent will add it"
     ask_agent "$add_task"
   elif [[ -L $codex_hooks ]]; then
