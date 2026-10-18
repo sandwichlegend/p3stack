@@ -8,12 +8,13 @@ codex_home=${CODEX_HOME:-$HOME/.codex}
 codex_hooks=$codex_home/hooks.json
 cursor_local=$HOME/.cursor/plugins/local
 cursor_clone=$HOME/.p3stack/repo
+opencode_spec=github:$repo
 agent_tasks=()
 trust_codex_hook=0
 
 usage() {
   cat <<EOF
-Install p3stack into the AI coding tools T3 Code runs: Claude Code, Codex, and Cursor.
+Install p3stack into the AI coding tools T3 Code runs: Claude Code, Codex, Cursor, and OpenCode.
 
 Usage: install.sh [install|update|uninstall]
 
@@ -55,6 +56,7 @@ lists() {
 claude_found() { has claude; }
 codex_found() { has codex; }
 cursor_found() { has cursor-agent || has cursor || [[ -d $HOME/.cursor ]]; }
+opencode_found() { has opencode; }
 
 claude_install() {
   run claude plugin marketplace add "$repo" || return 1
@@ -212,6 +214,27 @@ cursor_uninstall() {
   rm -rf "$cursor_local/p3stack" "$cursor_local/p3stack-team-kit" "$cursor_clone"
 }
 
+opencode_v2() {
+  local version
+  version=$(query opencode --version) || return 1
+  if [[ ! $version =~ v?([0-9]+)\. ]] || ((BASH_REMATCH[1] < 2)); then
+    warn "p3stack needs OpenCode V2, and this is ${version:-an unknown version}. Install @opencode/cli to upgrade."
+    return 1
+  fi
+}
+
+opencode_install() {
+  opencode_v2 || return 1
+  run opencode plugin add "$opencode_spec"
+}
+
+opencode_update() {
+  opencode_install || return 1
+  run opencode plugin update "$opencode_spec"
+}
+
+opencode_uninstall() { run opencode plugin remove "$opencode_spec"; }
+
 finish() {
   local action=$1 done_tools=$2 failed=$3
   heading "Next"
@@ -221,6 +244,9 @@ finish() {
     say "Start or resume a T3 thread to load p3stack."
     [[ $action == install ]] && say "Then run /setup-pstack once in any T3 thread to pick models."
     [[ $done_tools == *cursor* ]] && say "Cursor doesn't run the startup hook, so type /poteto-mode at the start of each task there."
+    if [[ $done_tools == *opencode* ]]; then
+      say "For OpenCode, use Refresh provider status in T3's Settings > Providers. OpenCode can keep its old config for about 30 seconds, so refresh again if p3stack's skills don't show."
+    fi
   fi
   for tool in $failed; do
     ask_agent "Finish the p3stack $action for $tool. The steps are in the $action section of https://github.com/sandwichlegend/p3stack#readme. The installer's output above shows where it stopped."
@@ -248,7 +274,7 @@ main() {
   [[ $# -le 1 ]] || { warn "too many arguments"; usage >&2; exit 2; }
 
   local done_tools="" failed="" skipped=""
-  for tool in claude codex cursor; do
+  for tool in claude codex cursor opencode; do
     if ! "${tool}_found"; then
       skipped="$skipped $tool"
       continue
@@ -267,7 +293,7 @@ main() {
   [[ -n $skipped ]] && say "not found, skipped:${skipped}"
   [[ -n $failed ]] && say "stopped:${failed}"
   if [[ -z $done_tools && -z $failed ]]; then
-    say "None of Claude Code, Codex, or Cursor was found on this machine."
+    say "None of Claude Code, Codex, Cursor, or OpenCode was found on this machine."
     exit 1
   fi
   finish "$action" "$done_tools" "$failed"
