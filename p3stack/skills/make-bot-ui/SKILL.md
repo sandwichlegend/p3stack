@@ -1,5 +1,5 @@
 ---
-name: Make Bot UI
+name: make-bot-ui
 description: >-
   Use when building a custom UI (page, dashboard, buttons) that should wake a
   T3 Code thread over a webhook, or when exposing that UI on Tailscale.

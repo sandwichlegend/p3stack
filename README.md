@@ -187,6 +187,7 @@ The [Subagents section of poteto-mode](./p3stack/skills/poteto-mode/SKILL.md#sub
 - `scripts/subtrees.txt` maps each folder here to its upstream folder.
 - `scripts/removed.txt` lists upstream paths p3stack deletes.
 - `scripts/unported.txt` lists files that still use Cursor-only mechanics. It is empty after the port.
+- `scripts/check-docs.mjs` is upstream's docs check, pointed at `p3stack/`. It fails when `p3stack/README.md` or the guide drifts from the tree: a skill, playbook, or agent left out, a wrong count, a broken link or anchor, or a model setup-pstack doesn't use.
 
 ## Syncing with upstream
 
