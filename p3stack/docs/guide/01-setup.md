@@ -4,7 +4,7 @@ In this page you install the plugin, pick which models pstack uses, and run your
 
 ## Install the plugin
 
-p3stack runs inside [T3 Code](https://github.com/pingdotgg/t3code). T3 drives Claude Code, Codex, and Cursor, and each of them loads plugins its own way, so install the `p3stack` and `p3stack-team-kit` plugins into every provider you use. The [repository README](https://github.com/sandwichlegend/p3stack#install) has the commands. A delegated agent runs on whichever provider its role names, so a provider without the plugin still works for subagents, because every brief names the skill files by path.
+p3stack runs inside [T3 Code](https://github.com/pingdotgg/t3code). T3 drives Claude Code, Codex, Cursor, and OpenCode, and each of them loads plugins its own way, so install the `p3stack` and `p3stack-team-kit` plugins into every provider you use. The [repository README](https://github.com/sandwichlegend/p3stack#install) has the commands. A delegated agent runs on whichever provider its role names, so a provider without the plugin still works for subagents, because every brief names the skill files by path.
 
 ## Pick your models
 
@@ -52,6 +52,6 @@ Pick something real but small, and describe it the way you'd describe it to a co
 
 Watch the todo list. Its first items are the matched playbook's steps copied in, the Feature playbook for this prompt. If `/poteto-mode` skips a step, the step stays in the list with `skip: <reason>`, so you can see what it chose not to do.
 
-From here you can type normal follow-ups. In Claude Code and Codex threads, the p3stack session hook tells the agent to read `/poteto-mode` for every non-trivial engineering task, so it stays on without retyping. Cursor threads don't run the hook, so start each new task there with `/poteto-mode`.
+From here you can type normal follow-ups. In Claude Code, Codex, and OpenCode threads, the p3stack startup context tells the agent to read `/poteto-mode` for every non-trivial engineering task, so it stays on without retyping. Cursor threads don't get it, so start each new task there with `/poteto-mode`.
 
 Next: [Route work through `/poteto-mode`](./02-poteto-mode.md).

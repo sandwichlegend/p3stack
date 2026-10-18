@@ -2,13 +2,13 @@
 
 [pstack](https://github.com/cursor/plugins/tree/main/pstack), Lauren Tan's (poteto) engineering workflow for Cursor, rewritten to run in [T3 Code](https://github.com/pingdotgg/t3code) on [Orchestrator V2](https://github.com/pingdotgg/t3code/tree/main/docs/orchestration-v2).
 
-T3 Code drives Claude Code, Codex, and Cursor from one app, and its `t3-code` MCP server lets any agent delegate a task to any of their models. p3stack uses that for pstack's multi-model work. The default review panels seat Claude Opus, GPT, and Grok, one model from each of three labs, and code goes to Grok with GPT as the fallback.
+T3 Code drives Claude Code, Codex, Cursor, and OpenCode from one app, and its `t3-code` MCP server lets any agent delegate a task to any of their models. p3stack uses that for pstack's multi-model work. The default review panels seat Claude Opus, GPT, and Grok, one model from each of three labs, and code goes to Grok with GPT as the fallback.
 
 The plugin's own [README](./p3stack/README.md) and [guide](./p3stack/docs/guide/README.md) cover the skills.
 
 ## Install
 
-T3 doesn't install plugins itself. It runs Claude Code, Codex, and Cursor, and each of them loads plugins from its own folder on your machine. So install p3stack from a terminal, once for each of those tools you use in T3. Threads you start or resume afterward pick it up.
+T3 doesn't install plugins itself. It runs Claude Code, Codex, Cursor, and OpenCode, and each of them loads plugins from its own folder on your machine. So install p3stack from a terminal, once for each of those tools you use in T3. Threads you start or resume afterward pick it up.
 
 You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, which carries `deslop`, `control-ui`, and `control-cli`.
 
@@ -18,7 +18,7 @@ You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, w
 curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash
 ```
 
-The installer finds which of Claude Code, Codex, and Cursor you have and sets up both plugins in each. It prints each install, update, or uninstall command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent.
+The installer finds which of Claude Code, Codex, Cursor, and OpenCode you have and sets up both plugins in each. It prints each install, update, or uninstall command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent.
 
 It installs into your home folder, once per machine, and every project and T3 thread picks it up. Nothing is written into your repositories.
 
@@ -85,6 +85,18 @@ If you also have Cursor's own `pstack` plugin installed, turn it off in Cursor's
 
 Cursor doesn't run the startup hook, so type `/poteto-mode` at the start of each task in a Cursor thread.
 
+### OpenCode
+
+p3stack needs OpenCode V2, and T3 needs OpenCode 2.0.18 or newer. `opencode --version` prints the version. Turn on the OpenCode provider in T3's Settings > Providers.
+
+```shell
+opencode plugin add github:sandwichlegend/p3stack
+```
+
+OpenCode installs the repository as a plugin and adds it to `plugins` in `~/.config/opencode/opencode.json`. T3 runs OpenCode with that global config, so T3's OpenCode threads load the p3stack and team-kit skills and get the startup context in their system prompt. Then use Refresh provider status in T3's Settings > Providers. OpenCode can keep its old config for about 30 seconds, so refresh again if the p3stack skills don't show. See T3's [OpenCode provider guide](https://github.com/pingdotgg/t3code/blob/main/docs/user/providers-opencode.md).
+
+OpenCode doesn't get the `poteto-agent` and `comment-sicko` agents. p3stack spawns its subagents through T3's `delegate_task`, not through a provider's own agents. If you keep a skill with the same name in `~/.agents/skills/` or `~/.claude/skills/`, OpenCode uses your copy.
+
 ### Then
 
 Run `/setup-pstack` once in any T3 thread. It reads the models T3 can run and writes `~/.p3stack/models.md`.
@@ -128,6 +140,14 @@ cp -R ~/.p3stack/repo/p3stack ~/.cursor/plugins/local/p3stack
 cp -R ~/.p3stack/repo/team-kit ~/.cursor/plugins/local/p3stack-team-kit
 ```
 
+OpenCode:
+
+```shell
+opencode plugin update github:sandwichlegend/p3stack
+```
+
+Then use Refresh provider status in T3's Settings > Providers.
+
 ## Uninstall
 
 ```shell
@@ -160,6 +180,12 @@ Cursor:
 rm -rf ~/.cursor/plugins/local/p3stack ~/.cursor/plugins/local/p3stack-team-kit
 ```
 
+OpenCode:
+
+```shell
+opencode plugin remove github:sandwichlegend/p3stack
+```
+
 Your model choices and run files stay in `~/.p3stack/`. The installer's uninstall removes the Cursor copy in `~/.p3stack/repo`, and by hand you can delete it too. Delete `~/.p3stack/` to remove everything.
 
 ## What changed from pstack
@@ -173,7 +199,7 @@ The skills say the T3 thing directly. There is no translation layer.
 | Cloud agents, one VM each | `isolation: "worktree"` on this machine, capped by `max parallel writers` |
 | `/loop` | T3 wakes: task completion, `watch_pull_request`, and `schedule_task` heartbeats |
 | `agent-transcripts/` | `t3_thread_list`, `t3_thread_search`, and `t3_thread_read` |
-| Custom Mode | A SessionStart hook in Claude Code and Codex |
+| Custom Mode | A SessionStart hook in Claude Code and Codex, and a plugin hook that adds the same text to OpenCode's system prompt |
 | Grok Bot webhook routines in `/make-bot-ui` | `schedule_task` webhook tasks |
 | Benny, on Cursor Automations and Slack | Removed. Build automation lines from `schedule_task` |
 | `cursor-team-kit` | `p3stack-team-kit`, with `control-ui` driving T3's browser preview |
