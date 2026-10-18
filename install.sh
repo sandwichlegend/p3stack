@@ -8,21 +8,21 @@ codex_home=${CODEX_HOME:-$HOME/.codex}
 codex_hooks=$codex_home/hooks.json
 cursor_local=$HOME/.cursor/plugins/local
 cursor_clone=$HOME/.p3stack/repo
-codex_hook_changed=0
-codex_hook_manual=0
+agent_tasks=()
+trust_codex_hook=0
 
 usage() {
   cat <<EOF
 Install p3stack into the AI coding tools T3 Code runs: Claude Code, Codex, and Cursor.
 
-Usage: install.sh [install|update|uninstall] [--only claude,codex,cursor]
+Usage: install.sh [install|update|uninstall]
 
   install    Add p3stack and p3stack-team-kit to every tool found (default)
   update     Pull the latest p3stack into every tool found
   uninstall  Remove p3stack from every tool found
-  --only     Limit to a comma-separated list of tools
 
 Run it from a terminal, once per machine. Safe to run again.
+Anything it can't do with certainty, it hands to your coding agent as a prompt.
 EOF
 }
 
@@ -30,24 +30,18 @@ say() { printf '%s\n' "$*"; }
 heading() { printf '\n== %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 has() { command -v "$1" >/dev/null 2>&1; }
+ask_agent() { agent_tasks+=("$1"); }
 
 run() {
   printf '$ %s\n' "$*"
   "$@" </dev/null
 }
 
-remove() {
-  local absent=$1 output status=0
+lists() {
+  local wanted=$1 output
   shift
-  printf '$ %s\n' "$*"
-  output=$("$@" </dev/null 2>&1) || status=$?
-  [[ -n $output ]] && printf '%s\n' "$output"
-  [[ $status == 0 ]] && return 0
-  if [[ $output == *"$absent"* ]]; then
-    say "already removed"
-    return 0
-  fi
-  return "$status"
+  output=$("$@" </dev/null 2>/dev/null) || return 1
+  [[ $'\n'$output$'\n' == *[[:space:]]"$wanted"$'\n'* || $'\n'$output == *$'\n'"$wanted "* ]]
 }
 
 claude_found() { has claude; }
@@ -71,9 +65,13 @@ claude_update() {
 
 claude_uninstall() {
   for plugin in "${plugins[@]}"; do
-    remove "Plugin \"$plugin@$marketplace\" not found in installed plugins" claude plugin uninstall "$plugin@$marketplace" || return 1
+    if lists "$plugin@$marketplace" claude plugin list; then
+      run claude plugin uninstall "$plugin@$marketplace" || return 1
+    fi
   done
-  remove "Marketplace '$marketplace' not found" claude plugin marketplace remove "$marketplace" || return 1
+  if lists "$marketplace" claude plugin marketplace list; then
+    run claude plugin marketplace remove "$marketplace" || return 1
+  fi
 }
 
 codex_hook_script() {
@@ -84,107 +82,43 @@ codex_hook_script() {
   printf '%s' "$found"
 }
 
-codex_hook_edit() {
-  local mode=$1 command=${2:-}
-  python3 - "$mode" "$codex_hooks" "$command" <<'PY'
-import json, os, re, stat, sys, tempfile
-
-mode, path, command = sys.argv[1:4]
-suffix = r'/plugins/cache/p3stack/p3stack/[^/"\s]+/hooks/session-start'
-ours = re.compile(rf'^(?:"/[^"]*{suffix}"|/\S*{suffix})$')
-
-data = {}
-if os.path.exists(path):
-    with open(path) as handle:
-        text = handle.read().strip()
-    if text:
-        try:
-            data = json.loads(text)
-        except ValueError as error:
-            raise SystemExit(f"{path} isn't valid JSON ({error})")
-if not isinstance(data, dict):
-    raise SystemExit(f"{path} is not a JSON object")
-hooks = data.get("hooks", {})
-if not isinstance(hooks, dict):
-    raise SystemExit(f"{path} has a \"hooks\" value that isn't an object")
-groups = hooks.get("SessionStart", [])
-if not isinstance(groups, list):
-    raise SystemExit(f"{path} has a SessionStart value that isn't a list")
-
-def is_ours(entry):
-    return isinstance(entry, dict) and isinstance(entry.get("command"), str) and bool(ours.match(entry["command"]))
-
-kept = []
-for group in groups:
-    entries = group.get("hooks") if isinstance(group, dict) else None
-    if not isinstance(entries, list) or not any(is_ours(entry) for entry in entries):
-        kept.append(group)
-        continue
-    others = [entry for entry in entries if not is_ours(entry)]
-    if others:
-        kept.append({**group, "hooks": others})
-
-if mode == "add":
-    kept.append({"hooks": [{"type": "command", "command": command, "timeout": 10}]})
-
-if kept == groups:
-    print("unchanged")
-    raise SystemExit(0)
-
-hooks["SessionStart"] = kept
-data["hooks"] = hooks
-directory = os.path.dirname(path)
-os.makedirs(directory, exist_ok=True)
-handle, temp = tempfile.mkstemp(dir=directory)
-try:
-    with os.fdopen(handle, "w") as out:
-        json.dump(data, out, indent=2)
-        out.write("\n")
-    if os.path.exists(path):
-        os.chmod(temp, stat.S_IMODE(os.stat(path).st_mode))
-    os.replace(temp, path)
-except BaseException:
-    if os.path.exists(temp):
-        os.unlink(temp)
-    raise
-print("changed")
-PY
+codex_hooks_json() {
+  cat <<EOF
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$1\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+EOF
 }
 
 codex_hook_add() {
-  local script result
+  local script
   script=$(codex_hook_script)
   if [[ -z $script ]]; then
-    warn "couldn't find p3stack's session-start hook under $codex_home/plugins/cache"
-    codex_hook_manual=1
+    warn "couldn't find p3stack's startup hook in the Codex plugin cache"
     return 0
   fi
-  if ! has python3; then
-    warn "python3 is missing, so the Codex startup hook wasn't added to $codex_hooks"
-    codex_hook_manual=1
-    return 0
-  fi
-  say "adding the p3stack startup hook to $codex_hooks"
-  if ! result=$(codex_hook_edit add "\"$script\""); then
-    warn "couldn't update $codex_hooks, so add the startup hook by hand"
-    codex_hook_manual=1
-    return 0
-  fi
-  [[ $result == changed ]] && codex_hook_changed=1
-  say "startup hook $result"
-}
-
-codex_hook_remove() {
-  [[ -f $codex_hooks ]] || return 0
-  if ! has python3; then
-    [[ $(<"$codex_hooks") == *"/plugins/cache/$marketplace/p3stack/"* ]] || return 0
-    warn "python3 is missing, so remove the p3stack entry from $codex_hooks by hand"
-    return 1
-  fi
-  say "removing the p3stack startup hook from $codex_hooks"
-  if ! codex_hook_edit remove >/dev/null; then
-    warn "couldn't update $codex_hooks, so remove the p3stack entry by hand"
-    return 1
+  if [[ ! -e $codex_hooks ]]; then
+    say "writing the p3stack startup hook to $codex_hooks"
+    codex_hooks_json "$script" >"$codex_hooks"
+    trust_codex_hook=1
+  elif [[ $(<"$codex_hooks") == *"\\\"$script\\\""* ]]; then
+    say "the p3stack startup hook is already in $codex_hooks"
+  else
+    say "$codex_hooks already exists, so your agent will add the startup hook"
+    ask_agent "In $codex_hooks, add a SessionStart hook of type \"command\" whose command is \"$script\" (with the double quotes) and timeout 10. Keep every existing entry as it is."
+    trust_codex_hook=1
   fi
 }
 
@@ -208,12 +142,22 @@ codex_update() {
 }
 
 codex_uninstall() {
-  codex_hook_remove || return 1
+  local script
+  script=$(codex_hook_script)
+  if [[ -n $script && -f $codex_hooks ]]; then
+    if [[ $(<"$codex_hooks") == "$(codex_hooks_json "$script")" ]]; then
+      say "removing $codex_hooks, which only held the p3stack startup hook"
+      rm "$codex_hooks"
+    elif [[ $(<"$codex_hooks") == *"$script"* ]]; then
+      ask_agent "In $codex_hooks, remove the SessionStart hook entry whose command is \"$script\". Keep every other entry as it is."
+    fi
+  fi
   for plugin in "${plugins[@]}"; do
-    remove "plugin \`$plugin@$marketplace\` is not installed" codex plugin remove "$plugin@$marketplace" || return 1
+    run codex plugin remove "$plugin@$marketplace" || return 1
   done
-  remove "marketplace \`$marketplace\` is not configured or installed" codex plugin marketplace remove "$marketplace" || return 1
-  find "$codex_home/plugins/cache/$marketplace" -depth -type d -empty -delete 2>/dev/null || true
+  if lists "$marketplace" codex plugin marketplace list; then
+    run codex plugin marketplace remove "$marketplace" || return 1
+  fi
 }
 
 cursor_install() {
@@ -236,60 +180,47 @@ cursor_install() {
 cursor_update() { cursor_install; }
 
 cursor_uninstall() {
-  say "removing $cursor_local/p3stack and $cursor_local/p3stack-team-kit"
+  say "removing $cursor_local/p3stack, $cursor_local/p3stack-team-kit, and $cursor_clone"
   rm -rf "$cursor_local/p3stack" "$cursor_local/p3stack-team-kit" "$cursor_clone"
 }
 
-next_steps() {
-  local action=$1 done_tools=$2
+finish() {
+  local action=$1 done_tools=$2 failed=$3
   heading "Next"
   if [[ $action == uninstall ]]; then
-    say "p3stack is removed. Your model choices and run files stay in ~/.p3stack/. Delete that folder to remove them too."
-    return
+    say "p3stack is removed from:${done_tools:- nothing}. Your model choices stay in ~/.p3stack/."
+  else
+    say "Start or resume a T3 thread to load p3stack."
+    [[ $action == install ]] && say "Then run /setup-pstack once in any T3 thread to pick models."
+    [[ $done_tools == *cursor* ]] && say "Cursor doesn't run the startup hook, so type /poteto-mode at the start of each task there."
   fi
-  say "Start or resume a T3 thread to load p3stack."
-  [[ $action == install ]] && say "Then run /setup-pstack once in any T3 thread to pick models."
-  if [[ $done_tools == *codex* ]]; then
-    if [[ $codex_hook_manual == 1 ]]; then
-      say "Codex: add the startup hook to $codex_hooks by hand. The README's Codex section shows the entry."
-    elif [[ $codex_hook_changed == 1 ]]; then
-      say "Codex: run codex in a terminal, type /hooks, and trust the p3stack SessionStart hook. T3 can't ask you, and Codex skips hooks you haven't trusted."
-    fi
+  for tool in $failed; do
+    ask_agent "Finish the p3stack $action for $tool. The steps are in the $action section of https://github.com/sandwichlegend/p3stack#readme. The installer's output above shows where it stopped."
+  done
+  if [[ ${#agent_tasks[@]} -gt 0 ]]; then
+    heading "Give this to your coding agent"
+    for task in "${agent_tasks[@]}"; do
+      say "- $task"
+    done
   fi
-  [[ $done_tools == *cursor* ]] && say "Cursor: type /poteto-mode at the start of each task. Cursor doesn't run the startup hook."
+  if [[ $trust_codex_hook == 1 ]]; then
+    heading "One manual step"
+    say "Run codex in a terminal, type /hooks, and trust the p3stack SessionStart hook. Codex skips hooks you haven't trusted, and T3 can't ask you."
+  fi
   return 0
 }
 
 main() {
-  local action=install only="" only_given=0
-  while [[ $# -gt 0 ]]; do
-    case $1 in
-      install|update|uninstall) action=$1 ;;
-      --only) [[ $# -ge 2 ]] || { usage >&2; exit 2; }; only=$2; only_given=1; shift ;;
-      --only=*) only=${1#--only=}; only_given=1 ;;
-      -h|--help|help) usage; exit 0 ;;
-      *) warn "unknown argument: $1"; usage >&2; exit 2 ;;
-    esac
-    shift
-  done
-
-  local tools=(claude codex cursor)
-  if [[ $only_given == 1 ]]; then
-    tools=()
-    local IFS=,
-    for tool in $only; do
-      [[ -z $tool ]] && continue
-      case $tool in
-        claude|codex|cursor) tools+=("$tool") ;;
-        *) warn "unknown tool: $tool"; usage >&2; exit 2 ;;
-      esac
-    done
-    unset IFS
-    [[ ${#tools[@]} -gt 0 ]] || { warn "--only needs at least one tool"; usage >&2; exit 2; }
-  fi
+  local action=install
+  case ${1:-install} in
+    install|update|uninstall) action=${1:-install} ;;
+    -h|--help|help) usage; exit 0 ;;
+    *) warn "unknown argument: $1"; usage >&2; exit 2 ;;
+  esac
+  [[ $# -le 1 ]] || { warn "too many arguments"; usage >&2; exit 2; }
 
   local done_tools="" failed="" skipped=""
-  for tool in "${tools[@]}"; do
+  for tool in claude codex cursor; do
     if ! "${tool}_found"; then
       skipped="$skipped $tool"
       continue
@@ -299,19 +230,19 @@ main() {
       done_tools="$done_tools $tool"
     else
       failed="$failed $tool"
-      warn "$action failed for $tool"
+      warn "$action stopped for $tool"
     fi
   done
 
   heading "Summary"
   [[ -n $done_tools ]] && say "done:${done_tools}"
   [[ -n $skipped ]] && say "not found, skipped:${skipped}"
-  [[ -n $failed ]] && say "failed:${failed}"
+  [[ -n $failed ]] && say "stopped:${failed}"
   if [[ -z $done_tools && -z $failed ]]; then
     say "None of Claude Code, Codex, or Cursor was found on this machine."
     exit 1
   fi
-  next_steps "$action" "$done_tools"
+  finish "$action" "$done_tools" "$failed"
   [[ -z $failed ]]
 }
 

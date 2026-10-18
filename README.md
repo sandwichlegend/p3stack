@@ -18,11 +18,13 @@ You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, w
 curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash
 ```
 
-The installer finds which of Claude Code, Codex, and Cursor you have and sets up both plugins in each. It prints every command it runs, and it's safe to run again. To limit it to some tools, add `-s -- --only claude,codex`.
+The installer finds which of Claude Code, Codex, and Cursor you have and sets up both plugins in each. It prints every command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent.
 
 It installs into your home folder, once per machine, and every project and T3 thread picks it up. Nothing is written into your repositories.
 
 One step stays manual. If you use Codex, run `codex` in a terminal, type `/hooks`, and trust the p3stack SessionStart hook. Codex skips hooks you haven't trusted, and T3 can't ask you. The installer reminds you when it's needed.
+
+To keep p3stack out of one of the tools, uninstall it from that tool by hand afterward, using the steps below.
 
 Then run `/setup-pstack` once in any T3 thread to pick models.
 
@@ -131,6 +133,8 @@ cp -R ~/.p3stack/repo/team-kit ~/.cursor/plugins/local/p3stack-team-kit
 ```shell
 curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- uninstall
 ```
+
+It removes the plugins and the Cursor copies. It deletes your Codex `hooks.json` only when the file holds nothing but the p3stack hook it wrote. If you have other hooks there, it prints a prompt for your agent to remove just the p3stack entry.
 
 By hand, Claude Code:
 
