@@ -18,7 +18,7 @@ You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, w
 curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash
 ```
 
-The installer finds which of Claude Code, Codex, and Cursor you have and sets up both plugins in each. It prints every command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent.
+The installer finds which of Claude Code, Codex, and Cursor you have and sets up both plugins in each. It prints each install, update, or uninstall command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent.
 
 It installs into your home folder, once per machine, and every project and T3 thread picks it up. Nothing is written into your repositories.
 

@@ -37,11 +37,19 @@ run() {
   "$@" </dev/null
 }
 
+query() {
+  local output
+  if ! output=$("$@" </dev/null 2>&1); then
+    warn "couldn't run: $*"
+    printf '%s\n' "$output" >&2
+    return 1
+  fi
+  printf '%s' "$output"
+}
+
 lists() {
-  local wanted=$1 output
-  shift
-  output=$("$@" </dev/null 2>/dev/null) || return 1
-  [[ $'\n'$output$'\n' == *[[:space:]]"$wanted"$'\n'* || $'\n'$output == *$'\n'"$wanted "* ]]
+  local listing=$1 wanted=$2
+  [[ $'\n'$listing$'\n' == *[[:space:]]"$wanted"$'\n'* || $'\n'$listing == *$'\n'"$wanted "* ]]
 }
 
 claude_found() { has claude; }
@@ -64,12 +72,15 @@ claude_update() {
 }
 
 claude_uninstall() {
+  local installed markets
+  installed=$(query claude plugin list) || return 1
+  markets=$(query claude plugin marketplace list) || return 1
   for plugin in "${plugins[@]}"; do
-    if lists "$plugin@$marketplace" claude plugin list; then
+    if lists "$installed" "$plugin@$marketplace"; then
       run claude plugin uninstall "$plugin@$marketplace" || return 1
     fi
   done
-  if lists "$marketplace" claude plugin marketplace list; then
+  if lists "$markets" "$marketplace"; then
     run claude plugin marketplace remove "$marketplace" || return 1
   fi
 }
@@ -103,22 +114,31 @@ EOF
 }
 
 codex_hook_add() {
-  local script
+  local script add_task
   script=$(codex_hook_script)
   if [[ -z $script ]]; then
-    warn "couldn't find p3stack's startup hook in the Codex plugin cache"
+    ask_agent "Codex installed p3stack, but its startup hook script isn't under $codex_home/plugins/cache/$marketplace/p3stack/. Find hooks/session-start in the installed p3stack plugin and add it as a SessionStart command hook in $codex_hooks, keeping every existing entry."
     return 0
   fi
-  if [[ ! -e $codex_hooks ]]; then
-    say "writing the p3stack startup hook to $codex_hooks"
-    codex_hooks_json "$script" >"$codex_hooks"
-    trust_codex_hook=1
-  elif [[ $(<"$codex_hooks") == *"\\\"$script\\\""* ]]; then
+  add_task="In $codex_hooks, add a SessionStart hook of type \"command\" that runs the executable $script with timeout 10, quoting the path for the shell and escaping it for JSON. Keep every existing entry as it is."
+  trust_codex_hook=1
+  if [[ $script == *[\"\\\`\$]* ]]; then
+    say "the hook path has characters the installer won't write by hand, so your agent will add it"
+    ask_agent "$add_task"
+  elif [[ -L $codex_hooks ]]; then
+    say "$codex_hooks is a symlink, so your agent will add the startup hook"
+    ask_agent "$add_task"
+  elif [[ ! -e $codex_hooks ]] && (set -C; codex_hooks_json "$script" >"$codex_hooks") 2>/dev/null; then
+    say "wrote the p3stack startup hook to $codex_hooks"
+  elif [[ -f $codex_hooks && $(<"$codex_hooks") == *"\\\"$script\\\""* ]]; then
     say "the p3stack startup hook is already in $codex_hooks"
-  else
+    trust_codex_hook=0
+  elif [[ -e $codex_hooks ]]; then
     say "$codex_hooks already exists, so your agent will add the startup hook"
-    ask_agent "In $codex_hooks, add a SessionStart hook of type \"command\" whose command is \"$script\" (with the double quotes) and timeout 10. Keep every existing entry as it is."
-    trust_codex_hook=1
+    ask_agent "$add_task"
+  else
+    warn "couldn't create $codex_hooks, so your agent will add the startup hook"
+    ask_agent "$add_task"
   fi
 }
 
@@ -142,20 +162,23 @@ codex_update() {
 }
 
 codex_uninstall() {
-  local script
+  local script markets
   script=$(codex_hook_script)
-  if [[ -n $script && -f $codex_hooks ]]; then
-    if [[ $(<"$codex_hooks") == "$(codex_hooks_json "$script")" ]]; then
+  if [[ -f $codex_hooks && ! -L $codex_hooks ]]; then
+    if [[ -n $script && $(<"$codex_hooks") == "$(codex_hooks_json "$script")" ]]; then
       say "removing $codex_hooks, which only held the p3stack startup hook"
-      rm "$codex_hooks"
-    elif [[ $(<"$codex_hooks") == *"$script"* ]]; then
-      ask_agent "In $codex_hooks, remove the SessionStart hook entry whose command is \"$script\". Keep every other entry as it is."
+      rm "$codex_hooks" || return 1
+    elif [[ $(<"$codex_hooks") == *"/plugins/cache/$marketplace/p3stack/"* ]]; then
+      ask_agent "In $codex_hooks, remove every SessionStart hook entry whose command runs a path under $codex_home/plugins/cache/$marketplace/p3stack/. Keep every other entry as it is."
     fi
+  elif [[ -L $codex_hooks ]]; then
+    ask_agent "Check $codex_hooks (a symlink) for SessionStart hook entries that run a path under $codex_home/plugins/cache/$marketplace/p3stack/, and remove only those."
   fi
   for plugin in "${plugins[@]}"; do
     run codex plugin remove "$plugin@$marketplace" || return 1
   done
-  if lists "$marketplace" codex plugin marketplace list; then
+  markets=$(query codex plugin marketplace list) || return 1
+  if lists "$markets" "$marketplace"; then
     run codex plugin marketplace remove "$marketplace" || return 1
   fi
 }
@@ -167,6 +190,10 @@ cursor_install() {
   else
     mkdir -p "$(dirname "$cursor_clone")"
     run git clone --quiet "https://github.com/$repo.git" "$cursor_clone" || return 1
+  fi
+  if [[ ! -d $cursor_clone/p3stack || ! -d $cursor_clone/team-kit ]]; then
+    warn "$cursor_clone is missing p3stack/ or team-kit/, so the Cursor copies were left as they are"
+    return 1
   fi
   mkdir -p "$cursor_local"
   rm -rf "$cursor_local/p3stack" "$cursor_local/p3stack-team-kit"
