@@ -84,4 +84,20 @@ if [[ "$dropped" == 1 ]]; then
   echo "dropped upstream files under scripts/removed.txt"
 fi
 
+while read -r there blob here what || [[ -n "$there" ]]; do
+  [[ -z "$there" || "$there" == \#* ]] && continue
+  now=$(git rev-parse -q --verify "$upstream:$there") || {
+    echo "Upstream $upstream no longer has $there, recorded at blob $blob. $here ports $what from it. This script can't tell whether upstream moved, rewrote, or deleted it, or whether the path in scripts/ported.txt is wrong. Find out with the Gone steps in step 4 of scripts/sync-agent.md before you change the line, then commit and run scripts/sync-upstream.sh again." >&2
+    exit 1
+  }
+  [[ "$now" == "$blob" ]] && continue
+  if git --no-pager diff "$blob" "$now" >&2; then
+    echo "Upstream changed $there (diff above). $here ports $what from it. Port any change to that part into $here." >&2
+  else
+    echo "Upstream changed $there, but the recorded blob $blob is missing, so there is no diff. $here ports $what from it. Compare that part with git show $upstream:$there and port any difference into $here." >&2
+  fi
+  echo "Then set the line's hash in scripts/ported.txt to $now, commit, and run scripts/sync-upstream.sh again." >&2
+  exit 1
+done <scripts/ported.txt
+
 scripts/check.sh

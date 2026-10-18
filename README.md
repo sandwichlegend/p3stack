@@ -187,6 +187,7 @@ The [Subagents section of poteto-mode](./p3stack/skills/poteto-mode/SKILL.md#sub
 - `scripts/subtrees.txt` maps each folder here to its upstream folder.
 - `scripts/removed.txt` lists upstream paths p3stack deletes.
 - `scripts/unported.txt` lists files that still use Cursor-only mechanics. It is empty after the port.
+- `scripts/ported.txt` lists upstream files outside the synced folders that p3stack copies, with the blob hash each copy matches and the part it ports.
 - `scripts/check-docs.mjs` is upstream's docs check, pointed at `p3stack/`. It fails when `p3stack/README.md` or the guide drifts from the tree: a skill, playbook, or agent left out, a wrong count, a broken link or anchor, or a model setup-pstack doesn't use.
 
 ## Syncing with upstream
@@ -195,7 +196,7 @@ The [Subagents section of poteto-mode](./p3stack/skills/poteto-mode/SKILL.md#sub
 scripts/sync-upstream.sh
 ```
 
-It fetches `cursor/plugins` into `refs/upstream/`, which are never pushed, and splits each upstream folder's history out with `git subtree split`. A split gives the same commits every run, so each sync is an ordinary subtree merge and only real edits conflict. The script keeps our plugin manifests when upstream bumps its version, keeps the paths in `scripts/removed.txt` deleted, and then runs `scripts/check.sh`.
+It fetches `cursor/plugins` into `refs/upstream/`, which are never pushed, and splits each upstream folder's history out with `git subtree split`. A split gives the same commits every run, so each sync is an ordinary subtree merge and only real edits conflict. The script keeps our plugin manifests when upstream bumps its version, keeps the paths in `scripts/removed.txt` deleted, and then runs `scripts/check.sh`. Before the checks, it stops if upstream changed a file in `scripts/ported.txt` or no longer has it. Its message says what to do, and step 4 of `scripts/sync-agent.md` covers both cases.
 
 A clean merge can still bring Cursor-only instructions into a file we already ported. `scripts/check.sh` fails on any Cursor-only term in a file that `scripts/unported.txt` doesn't list, so a sync can't land until every new Cursor mechanic is rewritten for T3. Run `scripts/check.sh --terms` to see each hit.
 
