@@ -37,14 +37,16 @@ run() {
 }
 
 remove() {
-  local output status=0
+  local absent=$1 output status=0
+  shift
   printf '$ %s\n' "$*"
   output=$("$@" </dev/null 2>&1) || status=$?
   [[ -n $output ]] && printf '%s\n' "$output"
   [[ $status == 0 ]] && return 0
-  case $output in
-    *"not found"*|*"not installed"*|*"not configured"*) say "already removed"; return 0 ;;
-  esac
+  if [[ $output == *"$absent"* ]]; then
+    say "already removed"
+    return 0
+  fi
   return "$status"
 }
 
@@ -69,9 +71,9 @@ claude_update() {
 
 claude_uninstall() {
   for plugin in "${plugins[@]}"; do
-    remove claude plugin uninstall "$plugin@$marketplace" || return 1
+    remove "Plugin \"$plugin@$marketplace\" not found in installed plugins" claude plugin uninstall "$plugin@$marketplace" || return 1
   done
-  remove claude plugin marketplace remove "$marketplace" || return 1
+  remove "Marketplace '$marketplace' not found" claude plugin marketplace remove "$marketplace" || return 1
 }
 
 codex_hook_script() {
@@ -88,7 +90,8 @@ codex_hook_edit() {
 import json, os, re, stat, sys, tempfile
 
 mode, path, command = sys.argv[1:4]
-ours = re.compile(r'^"?[^"]*/plugins/cache/p3stack/p3stack/[^/"]+/hooks/session-start"?$')
+suffix = r'/plugins/cache/p3stack/p3stack/[^/"\s]+/hooks/session-start'
+ours = re.compile(rf'^(?:"/[^"]*{suffix}"|/\S*{suffix})$')
 
 data = {}
 if os.path.exists(path):
@@ -174,8 +177,9 @@ codex_hook_add() {
 codex_hook_remove() {
   [[ -f $codex_hooks ]] || return 0
   if ! has python3; then
+    [[ $(<"$codex_hooks") == *"/plugins/cache/$marketplace/p3stack/"* ]] || return 0
     warn "python3 is missing, so remove the p3stack entry from $codex_hooks by hand"
-    return 0
+    return 1
   fi
   say "removing the p3stack startup hook from $codex_hooks"
   if ! codex_hook_edit remove >/dev/null; then
@@ -206,9 +210,9 @@ codex_update() {
 codex_uninstall() {
   codex_hook_remove || return 1
   for plugin in "${plugins[@]}"; do
-    remove codex plugin remove "$plugin@$marketplace" || return 1
+    remove "plugin \`$plugin@$marketplace\` is not installed" codex plugin remove "$plugin@$marketplace" || return 1
   done
-  remove codex plugin marketplace remove "$marketplace" || return 1
+  remove "marketplace \`$marketplace\` is not configured or installed" codex plugin marketplace remove "$marketplace" || return 1
   find "$codex_home/plugins/cache/$marketplace" -depth -type d -empty -delete 2>/dev/null || true
 }
 
