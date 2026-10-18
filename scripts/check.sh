@@ -59,6 +59,16 @@ for f in "${manifests[@]}"; do
   [[ "$got" == "$want" ]] || fail "$f is named $got, not $want"
 done
 
+package=package.json
+python3 -m json.tool "$package" >/dev/null 2>&1 || fail "$package is missing or not valid JSON"
+python3 -c 'import json,sys; sys.exit("version" in json.load(open(sys.argv[1])))' "$package" ||
+  fail "$package sets a version. Leave it out so each commit to main counts as an update."
+got=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$package")
+[[ "$got" == p3stack ]] || fail "$package is named $got, not p3stack"
+for skill in p3stack/skills/*/SKILL.md team-kit/skills/*/SKILL.md; do
+  [[ $(head -1 "$skill") == --- ]] || fail "$skill has no frontmatter, so the OpenCode plugin can't load it"
+done
+
 bash -n install.sh || fail "install.sh has a syntax error"
 [[ -x install.sh ]] || fail "install.sh is not executable"
 
