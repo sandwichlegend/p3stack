@@ -94,6 +94,13 @@ for path in sys.stdin.read().split("\0")[:-1]:
 ')
 [[ -z "$skill_names" ]] || fail "$skill_names"
 
+command -v node >/dev/null || fail "node is required to check the docs"
+if ! docs=$(node scripts/check-docs.mjs); then
+  drift=$(grep '^FAIL' <<<"$docs") || fail "scripts/check-docs.mjs crashed. Its error is above."
+  fail "README.md or the guide drifted from the tree:
+$drift"
+fi
+
 while IFS= read -r prefix; do
   [[ -z "$prefix" ]] && continue
   [[ -z "$(git ls-files -- "$prefix")" ]] ||
