@@ -6,7 +6,6 @@ marketplace=p3stack
 plugins=(p3stack p3stack-team-kit)
 codex_home=${CODEX_HOME:-$HOME/.codex}
 codex_hooks=$codex_home/hooks.json
-codex_hook_marker=/plugins/cache/$marketplace/p3stack/
 cursor_local=$HOME/.cursor/plugins/local
 cursor_clone=$HOME/.p3stack/repo
 codex_hook_changed=0
@@ -37,9 +36,16 @@ run() {
   "$@" </dev/null
 }
 
-try() {
+remove() {
+  local output status=0
   printf '$ %s\n' "$*"
-  "$@" </dev/null || true
+  output=$("$@" </dev/null 2>&1) || status=$?
+  [[ -n $output ]] && printf '%s\n' "$output"
+  [[ $status == 0 ]] && return 0
+  case $output in
+    *"not found"*|*"not installed"*|*"not configured"*) say "already removed"; return 0 ;;
+  esac
+  return "$status"
 }
 
 claude_found() { has claude; }
@@ -63,9 +69,9 @@ claude_update() {
 
 claude_uninstall() {
   for plugin in "${plugins[@]}"; do
-    try claude plugin uninstall "$plugin@$marketplace"
+    remove claude plugin uninstall "$plugin@$marketplace" || return 1
   done
-  try claude plugin marketplace remove "$marketplace"
+  remove claude plugin marketplace remove "$marketplace" || return 1
 }
 
 codex_hook_script() {
@@ -78,10 +84,12 @@ codex_hook_script() {
 
 codex_hook_edit() {
   local mode=$1 command=${2:-}
-  python3 - "$mode" "$codex_hooks" "$codex_hook_marker" "$command" <<'PY'
-import json, os, sys, tempfile
+  python3 - "$mode" "$codex_hooks" "$command" <<'PY'
+import json, os, re, stat, sys, tempfile
 
-mode, path, marker, command = sys.argv[1:5]
+mode, path, command = sys.argv[1:4]
+ours = re.compile(r'^"?[^"]*/plugins/cache/p3stack/p3stack/[^/"]+/hooks/session-start"?$')
+
 data = {}
 if os.path.exists(path):
     with open(path) as handle:
@@ -93,28 +101,49 @@ if os.path.exists(path):
             raise SystemExit(f"{path} isn't valid JSON ({error})")
 if not isinstance(data, dict):
     raise SystemExit(f"{path} is not a JSON object")
-
-hooks = data.setdefault("hooks", {})
+hooks = data.get("hooks", {})
+if not isinstance(hooks, dict):
+    raise SystemExit(f"{path} has a \"hooks\" value that isn't an object")
 groups = hooks.get("SessionStart", [])
+if not isinstance(groups, list):
+    raise SystemExit(f"{path} has a SessionStart value that isn't a list")
 
-def ours(group):
-    return any(marker in entry.get("command", "") for entry in group.get("hooks", []))
+def is_ours(entry):
+    return isinstance(entry, dict) and isinstance(entry.get("command"), str) and bool(ours.match(entry["command"]))
 
-others = [group for group in groups if not ours(group)]
-current = [group for group in groups if ours(group)]
-wanted = [{"hooks": [{"type": "command", "command": command, "timeout": 10}]}] if mode == "add" else []
+kept = []
+for group in groups:
+    entries = group.get("hooks") if isinstance(group, dict) else None
+    if not isinstance(entries, list) or not any(is_ours(entry) for entry in entries):
+        kept.append(group)
+        continue
+    others = [entry for entry in entries if not is_ours(entry)]
+    if others:
+        kept.append({**group, "hooks": others})
 
-if current == wanted:
+if mode == "add":
+    kept.append({"hooks": [{"type": "command", "command": command, "timeout": 10}]})
+
+if kept == groups:
     print("unchanged")
     raise SystemExit(0)
 
-hooks["SessionStart"] = others + wanted
-os.makedirs(os.path.dirname(path), exist_ok=True)
-handle, temp = tempfile.mkstemp(dir=os.path.dirname(path))
-with os.fdopen(handle, "w") as out:
-    json.dump(data, out, indent=2)
-    out.write("\n")
-os.replace(temp, path)
+hooks["SessionStart"] = kept
+data["hooks"] = hooks
+directory = os.path.dirname(path)
+os.makedirs(directory, exist_ok=True)
+handle, temp = tempfile.mkstemp(dir=directory)
+try:
+    with os.fdopen(handle, "w") as out:
+        json.dump(data, out, indent=2)
+        out.write("\n")
+    if os.path.exists(path):
+        os.chmod(temp, stat.S_IMODE(os.stat(path).st_mode))
+    os.replace(temp, path)
+except BaseException:
+    if os.path.exists(temp):
+        os.unlink(temp)
+    raise
 print("changed")
 PY
 }
@@ -149,7 +178,10 @@ codex_hook_remove() {
     return 0
   fi
   say "removing the p3stack startup hook from $codex_hooks"
-  codex_hook_edit remove >/dev/null || warn "couldn't update $codex_hooks, so remove the p3stack entry by hand"
+  if ! codex_hook_edit remove >/dev/null; then
+    warn "couldn't update $codex_hooks, so remove the p3stack entry by hand"
+    return 1
+  fi
 }
 
 codex_install() {
@@ -172,11 +204,11 @@ codex_update() {
 }
 
 codex_uninstall() {
-  codex_hook_remove
+  codex_hook_remove || return 1
   for plugin in "${plugins[@]}"; do
-    try codex plugin remove "$plugin@$marketplace"
+    remove codex plugin remove "$plugin@$marketplace" || return 1
   done
-  try codex plugin marketplace remove "$marketplace"
+  remove codex plugin marketplace remove "$marketplace" || return 1
   find "$codex_home/plugins/cache/$marketplace" -depth -type d -empty -delete 2>/dev/null || true
 }
 

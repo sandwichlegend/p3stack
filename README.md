@@ -156,7 +156,7 @@ Cursor:
 rm -rf ~/.cursor/plugins/local/p3stack ~/.cursor/plugins/local/p3stack-team-kit
 ```
 
-Your model choices and run files stay in `~/.p3stack/`, along with the Cursor clone. Delete that folder to remove them too.
+Your model choices and run files stay in `~/.p3stack/`. The installer's uninstall removes the Cursor copy in `~/.p3stack/repo`, and by hand you can delete it too. Delete `~/.p3stack/` to remove everything.
 
 ## What changed from pstack
 
