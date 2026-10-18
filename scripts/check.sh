@@ -36,7 +36,7 @@ if [[ "${1:-}" == "--terms" ]]; then
   exit 0
 fi
 
-for f in scripts/subtrees.txt scripts/removed.txt scripts/unported.txt; do
+for f in scripts/subtrees.txt scripts/removed.txt scripts/unported.txt scripts/ported.txt; do
   git ls-files --error-unmatch -- "$f" >/dev/null 2>&1 || fail "$f is not committed"
 done
 
@@ -93,6 +93,12 @@ for path in sys.stdin.read().split("\0")[:-1]:
         print(f"{path} is named \"{name}\", not its folder name {folder}")
 ')
 [[ -z "$skill_names" ]] || fail "$skill_names"
+
+while read -r there blob here what || [[ -n "$there" ]]; do
+  [[ -z "$there" || "$there" == \#* ]] && continue
+  [[ "$blob" =~ ^[0-9a-f]{40}$ && -f "$here" && -n "$what" ]] ||
+    fail "scripts/ported.txt line for $there needs an upstream path, a 40-character blob hash, a p3stack file that exists, and what that file ports"
+done <scripts/ported.txt
 
 command -v node >/dev/null || fail "node is required to check the docs"
 if ! docs=$(node scripts/check-docs.mjs); then

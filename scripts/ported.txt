@@ -1,0 +1,3 @@
+# upstream path, upstream blob, p3stack file, and the part of the upstream file that the p3stack file ports
+scripts/check-pstack-docs.mjs 6d83163c86883c9b34a25f5a4c34e75d83eaf95c scripts/check-docs.mjs the whole docs check
+scripts/generate-pstack-harness-trees.mjs 83335a116b670afd69b2eb586af63afb75d84bdd scripts/check.sh only the rules that a skill's name matches its folder and that the folder is lowercase words joined by hyphens, at most 64 characters
