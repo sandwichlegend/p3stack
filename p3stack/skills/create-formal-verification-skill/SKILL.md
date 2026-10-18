@@ -30,7 +30,7 @@ Pick the tool that answers the question at the lowest cost: a model checker, a p
 
 ## Generate the verify skill
 
-Write a project-local skill with frontmatter that names the area and says when to use it. Without frontmatter, the skill never registers. From the skill alone, the next agent must be able to tell whether a change touches the verified code, run the check, tell a real bug from a modeling error, and update the verification when a change is intended. Use this repo's real commands, paths, and nouns, and leave no placeholders.
+Write a project-local skill at `.agents/skills/<name>/SKILL.md` with frontmatter `name: <name>` (the same as the folder name: lowercase words joined by hyphens, at most 64 characters) and a `description` that names the area and says when to use it. Without frontmatter, the skill never registers. Link it into the other providers' folders so every T3 provider loads it: `ln -s ../../.agents/skills/<name> .claude/skills/<name>` and the same under `.cursor/skills/`. From the skill alone, the next agent must be able to tell whether a change touches the verified code, run the check, tell a real bug from a modeling error, and update the verification when a change is intended. Use this repo's real commands, paths, and nouns, and leave no placeholders.
 
 ## Prove it before you hand off
 
