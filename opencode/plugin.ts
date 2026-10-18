@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const repo = join(import.meta.dir, "..")
@@ -14,7 +14,7 @@ function readSkill(dir: string, id: string) {
   return {
     id,
     name: typeof meta.name === "string" ? meta.name : id,
-    description: typeof meta.description === "string" ? meta.description : undefined,
+    ...(typeof meta.description === "string" && { description: meta.description }),
     autoinvoke: meta["disable-model-invocation"] !== true,
     path,
     content: text.slice(frontmatter[0].length),
@@ -27,7 +27,7 @@ export default {
     const skills = skillSources.flatMap((source) => {
       const dir = join(repo, source)
       return readdirSync(dir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
+        .filter((entry) => entry.isDirectory() && existsSync(join(dir, entry.name, "SKILL.md")))
         .map((entry) => readSkill(dir, entry.name))
     })
     const context = readFileSync(join(p3stackRoot, "hooks/session-start-context.md"), "utf8")

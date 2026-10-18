@@ -66,7 +66,7 @@ python3 -c 'import json,sys; sys.exit("version" in json.load(open(sys.argv[1])))
 got=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$package")
 [[ "$got" == p3stack ]] || fail "$package is named $got, not p3stack"
 for skill in p3stack/skills/*/SKILL.md team-kit/skills/*/SKILL.md; do
-  [[ $(head -1 "$skill") == --- ]] || fail "$skill has no frontmatter, so the OpenCode plugin can't load it"
+  [[ $(head -1 "$skill" | tr -d '\r') == --- ]] || fail "$skill has no frontmatter, so the OpenCode plugin can't load it"
 done
 
 bash -n install.sh || fail "install.sh has a syntax error"
