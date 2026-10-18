@@ -59,6 +59,9 @@ for f in "${manifests[@]}"; do
   [[ "$got" == "$want" ]] || fail "$f is named $got, not $want"
 done
 
+bash -n install.sh || fail "install.sh has a syntax error"
+[[ -x install.sh ]] || fail "install.sh is not executable"
+
 hook=p3stack/hooks/session-start
 [[ -x "$hook" ]] || fail "$hook is missing or not executable"
 out=$("$hook") || fail "$hook exited nonzero"

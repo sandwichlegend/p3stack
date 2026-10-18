@@ -10,7 +10,23 @@ The plugin's own [README](./p3stack/README.md) and [guide](./p3stack/docs/guide/
 
 T3 doesn't install plugins itself. It runs Claude Code, Codex, and Cursor, and each of them loads plugins from its own folder on your machine. So install p3stack from a terminal, once for each of those tools you use in T3. Threads you start or resume afterward pick it up.
 
-You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, which carries `deslop`, `control-ui`, and `control-cli`. Install both.
+You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, which carries `deslop`, `control-ui`, and `control-cli`.
+
+### One command
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash
+```
+
+The installer finds which of Claude Code, Codex, and Cursor you have and sets up both plugins in each. It prints every command it runs, and it's safe to run again. To limit it to some tools, add `-s -- --only claude,codex`.
+
+It installs into your home folder, once per machine, and every project and T3 thread picks it up. Nothing is written into your repositories.
+
+One step stays manual. If you use Codex, run `codex` in a terminal, type `/hooks`, and trust the p3stack SessionStart hook. Codex skips hooks you haven't trusted, and T3 can't ask you. The installer reminds you when it's needed.
+
+Then run `/setup-pstack` once in any T3 thread to pick models.
+
+The rest of this section does the same thing by hand.
 
 ### Claude Code
 
@@ -75,7 +91,13 @@ Run `/setup-pstack` once in any T3 thread. It reads the models T3 can run and wr
 
 The manifests leave out `version`, so each commit to `main` is a release.
 
-Claude Code:
+```shell
+curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update
+```
+
+Start a new thread, or resume one, to load the update.
+
+By hand, Claude Code:
 
 ```shell
 claude plugin marketplace update p3stack
@@ -104,11 +126,13 @@ cp -R ~/.p3stack/repo/p3stack ~/.cursor/plugins/local/p3stack
 cp -R ~/.p3stack/repo/team-kit ~/.cursor/plugins/local/p3stack-team-kit
 ```
 
-Start a new thread, or resume one, to load the update.
-
 ## Uninstall
 
-Claude Code:
+```shell
+curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- uninstall
+```
+
+By hand, Claude Code:
 
 ```shell
 claude plugin uninstall p3stack@p3stack
