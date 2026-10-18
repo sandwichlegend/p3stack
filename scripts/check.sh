@@ -69,6 +69,31 @@ out=$("$hook") || fail "$hook exited nonzero"
 mode=$(grep -oE '[^`]*/skills/poteto-mode/SKILL\.md' <<<"$out" | head -1)
 [[ -f "$mode" ]] || fail "$hook points at a missing file: $mode"
 
+# The Agent Skills spec requires a skill's name to match its folder. Claude Code lists a skill by its name, so one that breaks the rule can't run.
+skill_names=$(git ls-files -z -- ':(glob)p3stack/skills/*/SKILL.md' ':(glob)team-kit/skills/*/SKILL.md' | python3 -c '
+import re, sys
+for path in sys.stdin.read().split("\0")[:-1]:
+    folder = path.split("/")[-2]
+    if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", folder) or len(folder) > 64:
+        print(f"{folder} is not lowercase words joined by hyphens, at most 64 characters")
+        continue
+    try:
+        lines = open(path, encoding="utf-8-sig").read().splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"{path} can\x27t be read as UTF-8: {e}")
+        continue
+    if not lines or lines[0] != "---" or "---" not in lines[1:]:
+        print(f"{path} has no frontmatter")
+        continue
+    block = lines[1:lines.index("---", 1)]
+    name = next((l[5:].strip() for l in block if l.startswith("name:")), "")
+    if len(name) >= 2 and name[0] == name[-1] and name[0] in "\"\x27":
+        name = name[1:-1]
+    if name != folder:
+        print(f"{path} is named \"{name}\", not its folder name {folder}")
+')
+[[ -z "$skill_names" ]] || fail "$skill_names"
+
 while IFS= read -r prefix; do
   [[ -z "$prefix" ]] && continue
   [[ -z "$(git ls-files -- "$prefix")" ]] ||
