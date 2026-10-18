@@ -16,13 +16,7 @@ fork it. improve it. make it yours. PRs are welcome!
 
 ## install
 
-p3stack runs in [t3 code](https://github.com/pingdotgg/t3code). install it into each provider t3 runs, from the [repository readme](https://github.com/sandwichlegend/p3stack#install). in claude code:
-
-```text
-/plugin install p3stack --marketplace sandwichlegend/p3stack
-```
-
-install `p3stack-team-kit` the same way. it carries `deslop`, `control-ui`, and `control-cli`.
+p3stack runs in [t3 code](https://github.com/pingdotgg/t3code). t3 runs claude code, codex, and cursor, and each loads plugins from its own folder, so you install p3stack into each of them from a terminal. install `p3stack-team-kit` alongside it, which carries `deslop`, `control-ui`, and `control-cli`. the [repository readme](https://github.com/sandwichlegend/p3stack#install) has the commands for all three, plus how to update and uninstall.
 
 ## get started
 
