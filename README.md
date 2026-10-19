@@ -18,7 +18,7 @@ You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, w
 curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash
 ```
 
-The installer finds which of Claude Code, Codex, Cursor, and OpenCode you have and sets up both plugins in each. It prints each install, update, or uninstall command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent.
+The installer finds which of Claude Code, Codex, Cursor, and OpenCode you have and sets up both plugins in each. It prints each install, update, or uninstall command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent. For Claude Code, it also turns on the todo tools in your Claude settings, as the Claude Code section below describes.
 
 It installs into your home folder, once per machine, and every project and T3 thread picks it up. Nothing is written into your repositories.
 
@@ -41,6 +41,18 @@ claude plugin install p3stack-team-kit@p3stack
 Inside a Claude Code session, `/plugin install p3stack --marketplace sandwichlegend/p3stack` does the same for the main plugin.
 
 T3's Claude threads then load the skills, the `poteto-agent` and `comment-sicko` agents, and the startup hook that points every session at `/poteto-mode`.
+
+poteto-mode keeps a todolist of each playbook's steps. Claude Code gives models newer than Opus 4.7, Sonnet 4.6, and Haiku 4.5 no todo tools unless you turn them on, and a plugin can't turn them on for you. Add this to `~/.claude/settings.json`, or to `settings.json` in `$CLAUDE_CONFIG_DIR` if you set that:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1"
+  }
+}
+```
+
+Keep your other settings, and merge `env` with any you already have. The installer does this for you. If you already set the variable to a value other than `"1"`, it leaves your value as it is.
 
 ### Codex
 
@@ -154,7 +166,7 @@ Then use Refresh provider status in T3's Settings > Providers.
 curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- uninstall
 ```
 
-It removes the plugins and the Cursor copies. It deletes your Codex `hooks.json` only when the file holds nothing but the p3stack hook it wrote. If you have other hooks there, it prints a prompt for your agent to remove just the p3stack entry.
+It removes the plugins and the Cursor copies. It leaves `CLAUDE_CODE_ENABLE_TODO_TOOLS` in your Claude settings, because it can't tell whether you set it yourself, and prints where to delete it. It deletes your Codex `hooks.json` only when the file holds nothing but the p3stack hook it wrote. If you have other hooks there, it prints a prompt for your agent to remove just the p3stack entry.
 
 By hand, Claude Code:
 
@@ -163,6 +175,8 @@ claude plugin uninstall p3stack@p3stack
 claude plugin uninstall p3stack-team-kit@p3stack
 claude plugin marketplace remove p3stack
 ```
+
+To turn off the todo tools too, delete `CLAUDE_CODE_ENABLE_TODO_TOOLS` from `env` in your Claude settings.
 
 Codex:
 

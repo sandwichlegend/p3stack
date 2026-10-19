@@ -4,6 +4,8 @@ set -euo pipefail
 repo=sandwichlegend/p3stack
 marketplace=p3stack
 plugins=(p3stack p3stack-team-kit)
+claude_settings=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json
+todo_tools=CLAUDE_CODE_ENABLE_TODO_TOOLS
 codex_home=${CODEX_HOME:-$HOME/.codex}
 codex_hooks=$codex_home/hooks.json
 cursor_local=$HOME/.cursor/plugins/local
@@ -58,11 +60,94 @@ codex_found() { has codex; }
 cursor_found() { has cursor-agent || has cursor || [[ -d $HOME/.cursor ]]; }
 opencode_found() { has opencode; }
 
+claude_settings_state() {
+  python3 -I - "$claude_settings" "$todo_tools" <<'EOF'
+import json, os, sys, tempfile
+
+path, key = sys.argv[1], sys.argv[2]
+sys.excepthook = lambda kind, error, trace: print(f"warning: {error}", file=sys.stderr)
+
+def report(state):
+    print(state)
+    sys.exit()
+
+def unique(pairs):
+    keys = [k for k, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate key")
+    return dict(pairs)
+
+def reject(constant):
+    raise ValueError(constant)
+
+if os.path.islink(path):
+    report("symlink")
+settings = {}
+try:
+    with open(path, encoding="utf-8") as f:
+        settings = json.load(f, object_pairs_hook=unique, parse_constant=reject)
+except FileNotFoundError:
+    pass
+except ValueError:
+    report("invalid")
+env = settings.get("env", {}) if isinstance(settings, dict) else None
+if not isinstance(env, dict):
+    report("invalid")
+if key in env:
+    report("already" if env[key] == "1" else "other")
+settings["env"] = {**env, key: "1"}
+
+folder = os.path.dirname(path)
+os.makedirs(folder, exist_ok=True)
+fd, tmp = tempfile.mkstemp(dir=folder, prefix=".settings.", suffix=".json")
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    if os.path.exists(path):
+        os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+    os.replace(tmp, path)
+except BaseException:
+    os.unlink(tmp)
+    raise
+report("set")
+EOF
+}
+
+claude_todo_tools() {
+  local task="In $claude_settings, set \"env\".\"$todo_tools\" to the string \"1\", creating the file or its \"env\" object if needed. Keep every other key and value as it is. This turns on Claude Code's todo tools, which poteto-mode needs on Claude models newer than Opus 4.7."
+  if ! has python3; then
+    say "python3 isn't installed, so your agent will turn on Claude Code's todo tools"
+    ask_agent "$task"
+    return 0
+  fi
+  case $(claude_settings_state) in
+    set) say "turned on Claude Code's todo tools with $todo_tools=1 in $claude_settings" ;;
+    already) say "Claude Code's todo tools are already on in $claude_settings" ;;
+    other) say "$claude_settings sets $todo_tools to a value other than \"1\", so it was left as it is. Set it to \"1\" to give poteto-mode its todolist on Claude models newer than Opus 4.7." ;;
+    symlink)
+      say "$claude_settings is a symlink, so your agent will turn on the todo tools"
+      ask_agent "$task"
+      ;;
+    invalid)
+      say "$claude_settings isn't JSON the installer can edit safely, so your agent will turn on the todo tools"
+      ask_agent "$task"
+      ;;
+    *)
+      warn "couldn't update $claude_settings, so your agent will turn on the todo tools"
+      ask_agent "$task"
+      ;;
+  esac
+}
+
 claude_install() {
   run claude plugin marketplace add "$repo" || return 1
   for plugin in "${plugins[@]}"; do
     run claude plugin install "$plugin@$marketplace" || return 1
   done
+  claude_todo_tools
 }
 
 claude_update() {
@@ -84,6 +169,9 @@ claude_uninstall() {
   done
   if lists "$markets" "$marketplace"; then
     run claude plugin marketplace remove "$marketplace" || return 1
+  fi
+  if [[ -f $claude_settings && $(<"$claude_settings") == *"$todo_tools"* ]]; then
+    say "$todo_tools stays in $claude_settings, since you may want the todo tools without p3stack. To turn them off, delete it from \"env\" there."
   fi
 }
 
