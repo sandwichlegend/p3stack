@@ -4,6 +4,8 @@ set -euo pipefail
 repo=sandwichlegend/p3stack
 marketplace=p3stack
 plugins=(p3stack p3stack-team-kit)
+claude_settings=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json
+todo_tools=CLAUDE_CODE_ENABLE_TODO_TOOLS
 codex_home=${CODEX_HOME:-$HOME/.codex}
 codex_hooks=$codex_home/hooks.json
 cursor_local=$HOME/.cursor/plugins/local
@@ -58,11 +60,121 @@ codex_found() { has codex; }
 cursor_found() { has cursor-agent || has cursor || [[ -d $HOME/.cursor ]]; }
 opencode_found() { has opencode; }
 
+claude_settings_enable() {
+  python3 -I - "$claude_settings" "$todo_tools" <<'EOF'
+import json, os, sys, tempfile
+
+path, key = sys.argv[1], sys.argv[2]
+sys.excepthook = lambda kind, error, trace: print(f"warning: {error}", file=sys.stderr)
+
+def report(state):
+    print(state)
+    sys.exit()
+
+def unique(pairs):
+    keys = [k for k, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate key")
+    return dict(pairs)
+
+# json.dumps can't write a number's source text, so each number is parsed as a unique string and its text is put back after dumps.
+numbers = {}
+nonce = os.urandom(8).hex()
+
+def keep(token):
+    mark = f"\0{nonce}:{len(numbers)}\0"
+    numbers[json.dumps(mark)] = token
+    return mark
+
+def reject(constant):
+    raise ValueError(constant)
+
+def has_acl(path):
+    try:
+        return "system.posix_acl_access" in os.listxattr(path)
+    except (AttributeError, OSError):
+        return False
+
+if os.path.islink(path):
+    report("symlink")
+settings = {}
+try:
+    with open(path, encoding="utf-8") as f:
+        settings = json.load(f, object_pairs_hook=unique, parse_float=keep, parse_int=keep, parse_constant=reject)
+except FileNotFoundError:
+    pass
+except ValueError:
+    report("invalid")
+env = settings.get("env", {}) if isinstance(settings, dict) else None
+if not isinstance(env, dict):
+    report("invalid")
+if key in env:
+    report("already" if env[key] == "1" else "other")
+settings["env"] = {**env, key: "1"}
+text = json.dumps(settings, indent=2, ensure_ascii=False)
+for mark, token in numbers.items():
+    text = text.replace(mark, token)
+
+folder = os.path.dirname(path)
+os.makedirs(folder, exist_ok=True)
+old = os.stat(path) if os.path.exists(path) else None
+if old and (not os.access(path, os.W_OK) or has_acl(path)):
+    report("locked")
+fd, tmp = tempfile.mkstemp(dir=folder, prefix=".settings.", suffix=".json")
+new = os.fstat(fd)
+if old and (old.st_uid, old.st_gid) != (new.st_uid, new.st_gid):
+    os.close(fd)
+    os.unlink(tmp)
+    report("locked")
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    if old:
+        os.chmod(tmp, old.st_mode & 0o7777)
+    os.replace(tmp, path)
+except BaseException:
+    os.unlink(tmp)
+    raise
+report("set")
+EOF
+}
+
+python_ready() {
+  has python3 || return 1
+  [[ $(uname -s) != Darwin || $(command -v python3) != /usr/bin/python3 ]] || xcode-select -p >/dev/null 2>&1
+}
+
+claude_todo_tools() {
+  local newer="Claude models newer than Opus 4.7, Sonnet 4.6, and Haiku 4.5"
+  local reason
+  if ! python_ready; then
+    reason="python3 isn't installed or can't run"
+  else
+    case $(claude_settings_enable) in
+      set) say "turned on Claude Code's todo tools with $todo_tools=1 in $claude_settings"; return 0 ;;
+      already) say "Claude Code's todo tools are already on in $claude_settings"; return 0 ;;
+      other)
+        say "$claude_settings sets $todo_tools to a value other than \"1\", so it was left as it is. Set it to \"1\" to give poteto-mode its todolist on $newer."
+        return 0
+        ;;
+      symlink) reason="$claude_settings is a symlink" ;;
+      invalid) reason="$claude_settings isn't JSON the installer can edit safely" ;;
+      locked) reason="$claude_settings has write protection, an owner, or an ACL the installer can't keep" ;;
+      *) reason="couldn't update $claude_settings" ;;
+    esac
+  fi
+  say "$reason, so your agent will turn on Claude Code's todo tools"
+  ask_agent "In $claude_settings, set \"env\".\"$todo_tools\" to the string \"1\", creating the file or its \"env\" object if needed. Keep every other key and value as it is. If the key already has a value other than \"1\", leave it and tell me. This turns on Claude Code's todo tools, which poteto-mode needs on $newer."
+}
+
 claude_install() {
   run claude plugin marketplace add "$repo" || return 1
   for plugin in "${plugins[@]}"; do
     run claude plugin install "$plugin@$marketplace" || return 1
   done
+  claude_todo_tools
 }
 
 claude_update() {
@@ -84,6 +196,9 @@ claude_uninstall() {
   done
   if lists "$markets" "$marketplace"; then
     run claude plugin marketplace remove "$marketplace" || return 1
+  fi
+  if [[ -f $claude_settings && $(<"$claude_settings") == *"$todo_tools"* ]]; then
+    say "$todo_tools stays in $claude_settings, since you may want it without p3stack. Delete it from \"env\" there if you don't."
   fi
 }
 
