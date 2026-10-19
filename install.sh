@@ -77,18 +77,23 @@ def unique(pairs):
         raise ValueError("duplicate key")
     return dict(pairs)
 
-def exact(token):
-    number = float(token)
-    if repr(number) != token:
-        raise ValueError(token)
-    return number
+numbers = {}
+nonce = os.urandom(8).hex()
+
+def keep(token):
+    mark = f"\0{nonce}:{len(numbers)}\0"
+    numbers[json.dumps(mark)] = token
+    return mark
+
+def reject(constant):
+    raise ValueError(constant)
 
 if os.path.islink(path):
     report("symlink")
 settings = {}
 try:
     with open(path, encoding="utf-8") as f:
-        settings = json.load(f, object_pairs_hook=unique, parse_float=exact, parse_constant=exact)
+        settings = json.load(f, object_pairs_hook=unique, parse_float=keep, parse_int=keep, parse_constant=reject)
 except FileNotFoundError:
     pass
 except ValueError:
@@ -99,14 +104,16 @@ if not isinstance(env, dict):
 if key in env:
     report("already" if env[key] == "1" else "other")
 settings["env"] = {**env, key: "1"}
+text = json.dumps(settings, indent=2, ensure_ascii=False)
+for mark, token in numbers.items():
+    text = text.replace(mark, token)
 
 folder = os.path.dirname(path)
 os.makedirs(folder, exist_ok=True)
 fd, tmp = tempfile.mkstemp(dir=folder, prefix=".settings.", suffix=".json")
 try:
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(settings, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+        f.write(text + "\n")
         f.flush()
         os.fsync(f.fileno())
     if os.path.exists(path):
@@ -128,7 +135,7 @@ claude_todo_tools() {
   local newer="Claude models newer than Opus 4.7, Sonnet 4.6, and Haiku 4.5"
   local reason
   if ! python_ready; then
-    reason="python3 isn't installed"
+    reason="python3 isn't installed or can't run"
   else
     case $(claude_settings_enable) in
       set) say "turned on Claude Code's todo tools with $todo_tools=1 in $claude_settings"; return 0 ;;
@@ -143,7 +150,7 @@ claude_todo_tools() {
     esac
   fi
   say "$reason, so your agent will turn on Claude Code's todo tools"
-  ask_agent "In $claude_settings, set \"env\".\"$todo_tools\" to the string \"1\", creating the file or its \"env\" object if needed. Keep every other key and value as it is. This turns on Claude Code's todo tools, which poteto-mode needs on $newer."
+  ask_agent "In $claude_settings, set \"env\".\"$todo_tools\" to the string \"1\", creating the file or its \"env\" object if needed. Keep every other key and value as it is. If the key already has a value other than \"1\", leave it and tell me. This turns on Claude Code's todo tools, which poteto-mode needs on $newer."
 }
 
 claude_install() {
