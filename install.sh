@@ -60,7 +60,7 @@ codex_found() { has codex; }
 cursor_found() { has cursor-agent || has cursor || [[ -d $HOME/.cursor ]]; }
 opencode_found() { has opencode; }
 
-claude_settings_state() {
+claude_settings_enable() {
   python3 -I - "$claude_settings" "$todo_tools" <<'EOF'
 import json, os, sys, tempfile
 
@@ -77,15 +77,18 @@ def unique(pairs):
         raise ValueError("duplicate key")
     return dict(pairs)
 
-def reject(constant):
-    raise ValueError(constant)
+def exact(token):
+    number = float(token)
+    if repr(number) != token:
+        raise ValueError(token)
+    return number
 
 if os.path.islink(path):
     report("symlink")
 settings = {}
 try:
     with open(path, encoding="utf-8") as f:
-        settings = json.load(f, object_pairs_hook=unique, parse_constant=reject)
+        settings = json.load(f, object_pairs_hook=unique, parse_float=exact, parse_constant=exact)
 except FileNotFoundError:
     pass
 except ValueError:
@@ -116,30 +119,31 @@ report("set")
 EOF
 }
 
+python_ready() {
+  has python3 || return 1
+  [[ $(uname -s) != Darwin || $(command -v python3) != /usr/bin/python3 ]] || xcode-select -p >/dev/null 2>&1
+}
+
 claude_todo_tools() {
-  local task="In $claude_settings, set \"env\".\"$todo_tools\" to the string \"1\", creating the file or its \"env\" object if needed. Keep every other key and value as it is. This turns on Claude Code's todo tools, which poteto-mode needs on Claude models newer than Opus 4.7."
-  if ! has python3; then
-    say "python3 isn't installed, so your agent will turn on Claude Code's todo tools"
-    ask_agent "$task"
-    return 0
+  local newer="Claude models newer than Opus 4.7, Sonnet 4.6, and Haiku 4.5"
+  local reason
+  if ! python_ready; then
+    reason="python3 isn't installed"
+  else
+    case $(claude_settings_enable) in
+      set) say "turned on Claude Code's todo tools with $todo_tools=1 in $claude_settings"; return 0 ;;
+      already) say "Claude Code's todo tools are already on in $claude_settings"; return 0 ;;
+      other)
+        say "$claude_settings sets $todo_tools to a value other than \"1\", so it was left as it is. Set it to \"1\" to give poteto-mode its todolist on $newer."
+        return 0
+        ;;
+      symlink) reason="$claude_settings is a symlink" ;;
+      invalid) reason="$claude_settings isn't JSON the installer can edit safely" ;;
+      *) reason="couldn't update $claude_settings" ;;
+    esac
   fi
-  case $(claude_settings_state) in
-    set) say "turned on Claude Code's todo tools with $todo_tools=1 in $claude_settings" ;;
-    already) say "Claude Code's todo tools are already on in $claude_settings" ;;
-    other) say "$claude_settings sets $todo_tools to a value other than \"1\", so it was left as it is. Set it to \"1\" to give poteto-mode its todolist on Claude models newer than Opus 4.7." ;;
-    symlink)
-      say "$claude_settings is a symlink, so your agent will turn on the todo tools"
-      ask_agent "$task"
-      ;;
-    invalid)
-      say "$claude_settings isn't JSON the installer can edit safely, so your agent will turn on the todo tools"
-      ask_agent "$task"
-      ;;
-    *)
-      warn "couldn't update $claude_settings, so your agent will turn on the todo tools"
-      ask_agent "$task"
-      ;;
-  esac
+  say "$reason, so your agent will turn on Claude Code's todo tools"
+  ask_agent "In $claude_settings, set \"env\".\"$todo_tools\" to the string \"1\", creating the file or its \"env\" object if needed. Keep every other key and value as it is. This turns on Claude Code's todo tools, which poteto-mode needs on $newer."
 }
 
 claude_install() {
@@ -171,7 +175,7 @@ claude_uninstall() {
     run claude plugin marketplace remove "$marketplace" || return 1
   fi
   if [[ -f $claude_settings && $(<"$claude_settings") == *"$todo_tools"* ]]; then
-    say "$todo_tools stays in $claude_settings, since you may want the todo tools without p3stack. To turn them off, delete it from \"env\" there."
+    say "$todo_tools stays in $claude_settings, since you may want it without p3stack. Delete it from \"env\" there if you don't."
   fi
 }
 
