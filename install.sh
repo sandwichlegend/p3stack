@@ -77,6 +77,7 @@ def unique(pairs):
         raise ValueError("duplicate key")
     return dict(pairs)
 
+# json.dumps can't write a number's source text, so each number is parsed as a unique string and its text is put back after dumps.
 numbers = {}
 nonce = os.urandom(8).hex()
 
@@ -87,6 +88,12 @@ def keep(token):
 
 def reject(constant):
     raise ValueError(constant)
+
+def has_acl(path):
+    try:
+        return "system.posix_acl_access" in os.listxattr(path)
+    except (AttributeError, OSError):
+        return False
 
 if os.path.islink(path):
     report("symlink")
@@ -110,14 +117,22 @@ for mark, token in numbers.items():
 
 folder = os.path.dirname(path)
 os.makedirs(folder, exist_ok=True)
+old = os.stat(path) if os.path.exists(path) else None
+if old and (not os.access(path, os.W_OK) or has_acl(path)):
+    report("locked")
 fd, tmp = tempfile.mkstemp(dir=folder, prefix=".settings.", suffix=".json")
+new = os.fstat(fd)
+if old and (old.st_uid, old.st_gid) != (new.st_uid, new.st_gid):
+    os.close(fd)
+    os.unlink(tmp)
+    report("locked")
 try:
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text + "\n")
         f.flush()
         os.fsync(f.fileno())
-    if os.path.exists(path):
-        os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+    if old:
+        os.chmod(tmp, old.st_mode & 0o7777)
     os.replace(tmp, path)
 except BaseException:
     os.unlink(tmp)
@@ -146,6 +161,7 @@ claude_todo_tools() {
         ;;
       symlink) reason="$claude_settings is a symlink" ;;
       invalid) reason="$claude_settings isn't JSON the installer can edit safely" ;;
+      locked) reason="$claude_settings has write protection, an owner, or an ACL the installer can't keep" ;;
       *) reason="couldn't update $claude_settings" ;;
     esac
   fi
