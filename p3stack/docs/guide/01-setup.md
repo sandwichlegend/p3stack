@@ -22,13 +22,15 @@ You only override what you care about. A role with no line in the file keeps the
 
 A seat reads `model@effort`, with `+fast` for fast mode and `|` between fallbacks. Set a role to `inherit` to run it on your chat's own model. For a panel role the value is a list, and one subagent runs per seat, so the list length sets the panel size. If a seat's provider can't run, the panel fills it from a lab it doesn't seat yet and says so. Setup also configures `swarm workers`, the default for every `/swarm` worker unless a race names a model for each arm, and `max parallel writers`, how many worktree agents may run at once on your machine.
 
-## Accept the verification offer, or don't
+## Accept the verification offers, or don't
 
 At the end of setup, `/setup-pstack` looks for a way to prove app behavior in your project, either a `verify-*` skill or an existing harness. If it finds neither, it offers once to generate one with [`/create-verification-skill`](../../skills/create-verification-skill/SKILL.md).
 
 Say yes and it writes `.agents/skills/verify-<app>/`, linked into `.claude/skills/` and `.cursor/skills/`, a project-local skill that teaches agents to drive your app the way a user does. It proves the skill works once before handing it over. Say no and setup moves on. You can run `/create-verification-skill` yourself any time. [Verify and ship](./06-verify-and-ship.md#create-a-project-verification-skill) covers it in depth.
 
 If you're new to pstack, say yes. An agent that can check its own work keeps going until the check passes. An agent that can't hands every result back to you to check by hand. Of everything in this guide, the verification skill pays off the most.
+
+Then setup offers once to generate a formal verification skill with [`/create-formal-verification-skill`](../../skills/create-formal-verification-skill/SKILL.md), unless the project already has one. Tests check the cases someone thought to write. A formal verification skill checks one key property of your code, such as "a job never runs twice at once", in every case within a stated scope. Say yes when your code has concurrency, retries, a state machine, or a parser, where a bug is costly and tests rarely reach the case that breaks. Otherwise say no, and run it later if that changes. [Verify and ship](./06-verify-and-ship.md#prove-a-property-with-a-formal-verification-skill) covers it.
 
 The model file applies to the next spawn. No restart needed.
 
