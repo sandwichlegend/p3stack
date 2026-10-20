@@ -20,6 +20,12 @@ Sync p3stack with upstream `cursor/plugins` and open a pull request for review.
 5. If `scripts/check.sh` reports Cursor-only terms, rewrite each hit for T3 (`scripts/check.sh --terms` lists them) and commit. Never add a file to `scripts/unported.txt` to silence the check.
 6. Run the poteto-mode tests: `npx -y bun install --frozen-lockfile` and `npx -y bun test orch watch-pr check-plan.test.ts` in `p3stack/skills/poteto-mode/scripts`.
 7. Flag, don't guess. When upstream changed how a workflow works rather than its wording, port your best reading and list it under **Needs a human** in the pull request body with the upstream commit and what you decided.
-8. Run `/interrogate` on the branch diff against `origin/main`, with at least one reviewer from a lab other than yours. Fix what it confirms.
-9. Push the branch and open the pull request per the Opening a PR playbook. The body lists each upstream commit merged, each conflict and how you ported it, and the **Needs a human** items. Link it with `link_pull_request`.
-10. Don't merge it. Report the link.
+8. Run `/interrogate` on the branch diff against `origin/main`, with at least one reviewer from a lab other than yours. Sort each confirmed finding by what it is about:
+   - **The port.** A conflict resolution, a T3 rewrite, a `scripts/ported.txt` edit, or anything else this branch wrote. Fix it and commit.
+   - **Upstream's own content.** Text or code the branch took from upstream unchanged, including a gap or a bug in what upstream wrote. p3stack ports upstream to T3. It doesn't rewrite it. Don't commit a change for it, and don't let it hold up the sync. Record it as an FYI for step 10, with the upstream commit, the file, and what the reviewers flagged.
+
+   If you can't tell which kind a finding is, run `git show refs/upstream/split/<folder>:<path>` on the file. A line that is there unchanged came from upstream.
+
+   Treat a gap you find yourself in upstream's content the same way. It goes in the FYIs, not in **Needs a human**.
+9. Push the branch and open the pull request per the Opening a PR playbook. The body lists each upstream commit merged, each conflict and how you ported it, and the **Needs a human** items. `scripts/check.sh` lists every subtree line that is in neither upstream's split nor `origin/main`, which means this branch wrote it. For each file on that list, add a line `` - `<file>`: <reason> `` to a `## Lines not from upstream` section, with a one-line reason such as the T3 rewrite or the conflict it resolves. CI fails the pull request until every file has a reason. If a file on the list holds a line that only changes upstream's meaning, drop that line instead of explaining it. Link the pull request with `link_pull_request`.
+10. Don't merge it. Report the link, then list each FYI from step 8 under **FYI for a human**: the upstream commit, the file, and what the reviewers flagged. Leave the FYIs out of the pull request body, because they ask nothing of its reviewer.
