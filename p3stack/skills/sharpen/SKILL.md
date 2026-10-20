@@ -1,6 +1,6 @@
 ---
 name: sharpen
-description: "Make a task deeper, not bigger, by rewriting its prompt. Returns the rewrite and doesn't do the task. Use for /sharpen."
+description: "Make a task deeper, not bigger, then rewrite the prompt. Use for /sharpen."
 disable-model-invocation: true
 ---
 
@@ -14,5 +14,3 @@ I want a deeper version of this task, not a bigger one. Before rewriting it, do 
 Then rewrite my prompt to ask for exactly that.
 
 Leave choices that are mine to make open instead of deciding them.
-
-Stop after the rewrite. Don't do the task.
