@@ -134,5 +134,37 @@ finished=$(comm -13 <(with_terms) <(printf '%s\n' "$listed" | grep -v '^$' || tr
 [[ -z "$finished" ]] || fail "These files are fully ported. Drop them from scripts/unported.txt:
 $(sed 's/^/  /' <<<"$finished")"
 
+base=$(git merge-base origin/main HEAD) || fail "origin/main is missing, so the check can't tell which subtree lines came from upstream. Run git fetch origin."
+invented=""
+invented_files=()
+while read -r here there; do
+  [[ -z "$here" ]] && continue
+  split_merge=$(git rev-list --merges -1 "$base..HEAD" \
+    --grep="^Merge cursor/plugins $there into $here\$" --grep="^Add $here from cursor/plugins $there\$")
+  while IFS= read -r -d '' f; do
+    lines=$(grep -nvxF -f <(git show "$base:$f" 2>/dev/null; [[ -z "$split_merge" ]] || git show "$split_merge^2:${f#"$here"/}" 2>/dev/null) \
+      <(git show "HEAD:$f") | grep -v '^[0-9]*:[[:space:]]*$' || true)
+    [[ -z "$lines" ]] && continue
+    invented_files+=("$f")
+    invented+="  $f"$'\n'"$(sed 's/^/    /' <<<"$lines")"$'\n'
+  done < <(git diff -z --name-only --diff-filter=d "$base" HEAD -- "$here")
+done <scripts/subtrees.txt
+if [[ -n "$invented" ]]; then
+  report="These subtree lines are in neither upstream's split nor origin/main, so this branch wrote them:
+${invented%$'\n'}
+The pull request body needs a line \"- \`<file>\`: <reason>\" for each file."
+  if [[ -z "${PR_BODY+set}" ]]; then
+    echo "$report" >&2
+  else
+    unexplained=""
+    for f in "${invented_files[@]}"; do
+      tr -d '\r' <<<"$PR_BODY" | awk -v p="- \`$f\`: " 'index($0, p) == 1 && length($0) > length(p) { found = 1 } END { exit !found }' ||
+        unexplained+=$'\n'"  $f"
+    done
+    [[ -z "$unexplained" ]] || fail "$report
+These files have no reason in the body:$unexplained"
+  fi
+fi
+
 left=$(grep -c . <<<"$listed" || true)
 echo "p3stack checks pass ($left files left to port)"
