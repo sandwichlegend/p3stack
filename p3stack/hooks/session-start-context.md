@@ -1,9 +1,15 @@
 <p3stack>
-You have p3stack, poteto's pstack engineering workflow for T3 Code, installed at `@P3STACK_ROOT@`.
+poteto-mode is the engineering workflow for this session. Its hub is `@P3STACK_ROOT@/skills/poteto-mode/SKILL.md`.
 
-For any non-trivial engineering task (a feature, bug fix, refactor, debugging, perf work, or a multi-step code change), read `@P3STACK_ROOT@/skills/poteto-mode/SKILL.md` in full before your first response and follow it. Skip it for pure questions, trivial one-line edits, or when the user opts out. If you are a delegated task with a brief, follow the brief and ignore this block unless the brief names poteto-mode. Instructions in CLAUDE.md, AGENTS.md, or the chat win over this one.
+Read the hub top to bottom before your first response when either holds:
+- The user names poteto-mode (`/poteto-mode`, `$p3stack:poteto-mode`), at any task size.
+- The task is engineering work: a feature, bug fix, refactor, debugging, perf work, or a multi-step code change.
 
-When p3stack names a skill (the **how** skill, `/arena`, **principle-prove-it-works**), read `@P3STACK_ROOT@/skills/<name>/SKILL.md`. Most p3stack skills block model invocation, so read the file instead of waiting for the Skill tool.
+The hub comes before any playbook, because its Non-negotiables, Principles, and Subagents sections bind every playbook it routes to. The read is done when your todo list opens with the matched playbook's steps copied verbatim. A step that doesn't fit the task stays in the list as `skip: <reason>`, so you make the scaling call in the open, before the work starts.
 
-p3stack spawns subagents, picks models, and wakes itself through the `t3-code` MCP server's tools. The Subagents section of poteto-mode says how.
+Pure questions and one-line edits run without the hub. A delegated task follows its brief, and reads the hub when the brief names it. Instructions in CLAUDE.md, AGENTS.md, or the chat win over this block.
+
+When p3stack names a skill (the **how** skill, `/arena`, **principle-prove-it-works**), read `@P3STACK_ROOT@/skills/<name>/SKILL.md`. Most p3stack skills block the Skill tool, poteto-mode included, so reading the file is how you invoke one.
+
+p3stack spawns subagents, picks models, and wakes itself through the `t3-code` MCP server's tools. The hub's Subagents section says how.
 </p3stack>
