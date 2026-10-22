@@ -147,9 +147,37 @@ async function runLatest(argv) {
   process.exit(result.status ?? 1)
 }
 
+const potato = [
+  "    ▄▄▄▄▄▄     ",
+  "  ▄██o█████▄▄  ",
+  " ███████████o█▄",
+  "████o██████████",
+  " ▀█████████o██▀",
+  "   ▀▀▀███▀▀▀▀  ",
+]
+
+const title = [
+  "██████╗ ██████╗ ███████╗████████╗ █████╗  ██████╗██╗  ██╗",
+  "██╔══██╗╚════██╗██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝",
+  "██████╔╝ █████╔╝███████╗   ██║   ███████║██║     █████╔╝ ",
+  "██╔═══╝  ╚═══██╗╚════██║   ██║   ██╔══██║██║     ██╔═██╗ ",
+  "██║     ██████╔╝███████║   ██║   ██║  ██║╚██████╗██║  ██╗",
+  "╚═╝     ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝",
+]
+
+function banner() {
+  const { stdout } = process
+  if (!stdout.isTTY || stdout.columns < potato[0].length + 3 + title[0].length) return
+  const paint = process.env.NO_COLOR ? (_, text) => text : (code, text) => `\x1b[${code}m${text}\x1b[0m`
+  const skin = (line) => line.replace(/[^o ]+/g, (run) => paint("38;5;137", run)).replace(/o/g, paint("38;5;94", "█"))
+  const lines = potato.map((line, i) => `${skin(line)}   ${paint(36, title[i])}`)
+  stdout.write(`\n${lines.join("\n")}\n\n`)
+}
+
 const argv = process.argv.slice(2)
 const { action, chosen } = parse(argv)
 await runLatest(argv)
+banner()
 if (!installer) {
   console.error("p3stack: install.sh is missing from this package. Reinstall with npx p3stack@latest.")
   process.exit(1)
