@@ -23,7 +23,7 @@ p3stack
 
 To use it without installing the CLI, run `npx p3stack` instead. Every `p3stack` command below works the same way with `npx` in front.
 
-<img src="./assets/npx-p3stack.png" alt="npx p3stack asking which of Claude Code, Codex, Cursor, and OpenCode to install into" width="572">
+<img src="./assets/p3stack%20cli.png" alt="p3stack asking which of Claude Code, Codex, Cursor, and OpenCode to install into" width="588">
 
 Finds which of Claude Code, Codex, Cursor, and OpenCode you have and asks which ones to set up. Use arrow keys and space to pick, then enter. To skip the question, pass `--all` or name the tools, as in `p3stack --tools claude,codex`. Needs Node 22 or newer and bash.
 
