@@ -104,7 +104,7 @@ A long chat accumulates context from the last task. When you change subjects, sa
 
 ## Give parallel work its own worktree
 
-If you run several agents against one repository, they will fight over the working tree, the ports, and the build output. p3stack gives every writing subagent its own T3 worktree, which starts from your current local commit, so commit what a worker needs before it spawns. Every agent still shares your machine, so `max parallel writers` in `~/.p3stack/models.md` caps how many run at once, and a worker that starts a server picks its own port.
+If you run several agents against one repository, they will fight over the working tree, the ports, and the build output. p3stack gives every writing subagent its own T3 Code worktree, which starts from your current local commit, so commit what a worker needs before it spawns. Every agent still shares your machine, so `max parallel writers` in `~/.p3stack/models.md` caps how many run at once, and a worker that starts a server picks its own port.
 
 For your own chat, ask for a worktree up front:
 

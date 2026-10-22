@@ -7,7 +7,7 @@ disable-model-invocation: true
 ---
 # How to make a bot UI
 
-Build a page the user clicks. A server on this computer POSTs JSON to a T3 webhook task. Each POST runs the task's prompt with that JSON. The webhook URL carries the task's token, so it is the secret. Keep it on the server. Do not put it in the browser, in chat, or in this skill.
+Build a page the user clicks. A server on this computer POSTs JSON to a T3 Code webhook task. Each POST runs the task's prompt with that JSON. The webhook URL carries the task's token, so it is the secret. Keep it on the server. Do not put it in the browser, in chat, or in this skill.
 
 ## Create the webhook task
 

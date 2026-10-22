@@ -1,6 +1,6 @@
 ---
 name: reflect
-description: Spawn three parallel review subagents over the active T3 thread, surface learnings, and route each to a concrete edit on an existing skill. Use when the user says reflect.
+description: Spawn three parallel review subagents over the active T3 Code thread, surface learnings, and route each to a concrete edit on an existing skill. Use when the user says reflect.
 disable-model-invocation: true
 ---
 
@@ -12,7 +12,7 @@ Invoke when the user says "reflect" or "/reflect". Skip when the conversation is
 
 ## 1. Locate the active thread
 
-Before fanning out, get this conversation's T3 thread id. `orchestrator_capabilities` returns it as `parentThreadId`. Reviewers read the thread with `t3_thread_read` and `view: "activity"`, which includes tool calls, and page with `afterPosition`. The thread's delegated tasks are threads too. Stay inside this thread and the tasks it spawned. Other threads are private chats from other work. If the thread can't be read, pass a tight digest of the session instead.
+Before fanning out, get this conversation's T3 Code thread id. `orchestrator_capabilities` returns it as `parentThreadId`. Reviewers read the thread with `t3_thread_read` and `view: "activity"`, which includes tool calls, and page with `afterPosition`. The thread's delegated tasks are threads too. Stay inside this thread and the tasks it spawned. Other threads are private chats from other work. If the thread can't be read, pass a tight digest of the session instead.
 
 ## 2. Spawn three reviewers in parallel
 

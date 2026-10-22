@@ -14,7 +14,7 @@ const PSTACK = join(ROOT, "p3stack");
 const GUIDE = "docs/guide";
 const SETUP = join(PSTACK, "skills", "setup-pstack", "SKILL.md");
 
-// Commands that ship with a T3 provider, not in this repository. Nothing here can verify them, so add a name only
+// Commands that ship with a T3 Code provider, not in this repository. Nothing here can verify them, so add a name only
 // after that provider's public docs show it.
 const EXTERNAL = new Set([]);
 

@@ -4,7 +4,7 @@ In this page you install the plugin, pick which models pstack uses, and run your
 
 ## Install the plugin
 
-p3stack runs inside [T3 Code](https://github.com/pingdotgg/t3code). T3 drives Claude Code, Codex, Cursor, and OpenCode, and each of them loads plugins its own way, so install the `p3stack` and `p3stack-team-kit` plugins into every provider you use. The [repository README](https://github.com/sandwichlegend/p3stack#install) has the commands. A delegated agent runs on whichever provider its role names, so a provider without the plugin still works for subagents, because every brief names the skill files by path.
+p3stack runs inside [T3 Code](https://github.com/pingdotgg/t3code). T3 Code drives Claude Code, Codex, Cursor, and OpenCode, and each of them loads plugins its own way, so install the `p3stack` and `p3stack-team-kit` plugins into every provider you use. The [repository README](https://github.com/sandwichlegend/p3stack#install) has the commands. A delegated agent runs on whichever provider its role names, so a provider without the plugin still works for subagents, because every brief names the skill files by path.
 
 ## Pick your models
 
@@ -14,7 +14,7 @@ Run:
 /setup-pstack
 ```
 
-[`/setup-pstack`](../../skills/setup-pstack/SKILL.md) detects the models you have access to, asks for a reasoning budget, shows you each role (code delegates, judgment, the review panels), and asks what you want. Answer the questions. It writes `~/.p3stack/models.md`, a small file every p3stack skill reads. It also tells you which providers T3 can't run right now, such as one that isn't signed in.
+[`/setup-pstack`](../../skills/setup-pstack/SKILL.md) detects the models you have access to, asks for a reasoning budget, shows you each role (code delegates, judgment, the review panels), and asks what you want. Answer the questions. It writes `~/.p3stack/models.md`, a small file every p3stack skill reads. It also tells you which providers T3 Code can't run right now, such as one that isn't signed in.
 
 The defaults run at `xhigh` reasoning, the same as the `large` budget. Code goes to Grok through Cursor, with GPT through Codex as the fallback. Prose and judgment go to Claude Opus. Every review panel seats Claude, GPT, and Grok, one model from each of three labs, because models from different labs miss different things. `unlimited` lifts each model to its highest tier, up to `max`. Grok tops out at `xhigh`, so it stays there. `medium` and `small` lower the reasoning and spend fewer tokens.
 

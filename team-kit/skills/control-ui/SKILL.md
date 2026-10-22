@@ -5,7 +5,7 @@ description: Build or adapt a local browser/CDP harness to drive and inspect a w
 
 # Control UI
 
-Use local browser automation to verify UI behavior with evidence. First reuse the repo's own Playwright, browser, or Electron harness if it exists. For a web app with no harness, drive it with T3's preview tools. Otherwise assemble a temporary local harness around the app's dev server or Chromium debug port.
+Use local browser automation to verify UI behavior with evidence. First reuse the repo's own Playwright, browser, or Electron harness if it exists. For a web app with no harness, drive it with T3 Code's preview tools. Otherwise assemble a temporary local harness around the app's dev server or Chromium debug port.
 
 ## What It Is Used For
 
@@ -24,9 +24,9 @@ Use local browser automation to verify UI behavior with evidence. First reuse th
 5. Select the correct page by stable app markers, not by tab order alone.
 6. Prefer accessibility roles, labels, and stable `data-*` selectors over coordinates.
 
-## T3 Preview
+## T3 Code Preview
 
-T3 Code's `t3-code` MCP server hosts a browser preview every T3 agent can drive, delegated agents included. Use it for a local web URL when the repo has no harness of its own.
+T3 Code's `t3-code` MCP server hosts a browser preview every T3 Code agent can drive, delegated agents included. Use it for a local web URL when the repo has no harness of its own.
 
 1. Open the app with `preview_open` on its local URL. Pass `open: false` for background-only automation. Parallel agents each open with `reuseExistingTab: false` and pass the returned `tabId` on every later call.
 2. Read the page with `preview_snapshot`, which returns the accessibility tree with refs. Target one element with `locator=aria-ref=<ref>`, and take a fresh snapshot after navigation.
