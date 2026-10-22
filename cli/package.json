@@ -21,6 +21,6 @@
     "prepack": "cp ../install.sh install.sh"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
