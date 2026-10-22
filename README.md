@@ -8,7 +8,7 @@ The plugin's own [README](./p3stack/README.md) and [guide](./p3stack/docs/guide/
 
 ## Install
 
-T3 doesn't install plugins itself. It runs Claude Code, Codex, Cursor, and OpenCode, and each of them loads plugins from its own folder on your machine. So install p3stack from a terminal, once for each of those tools you use in T3. Threads you start or resume afterward pick it up.
+T3 doesn't install plugins itself. T3 runs Claude Code, Codex, Cursor, and OpenCode, and each of them loads plugins from its own folder on your machine. So install p3stack from a terminal, once for each of those tools you use in T3. Threads you start or resume afterward pick it up.
 
 You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, which carries `deslop`, `control-ui`, and `control-cli`.
 
@@ -19,24 +19,24 @@ pnpm add -g p3stack
 p3stack
 ```
 
-`npm install -g p3stack` and `bun add -g p3stack` work too. If pnpm or bun says its global folder isn't on your PATH, follow the fix it prints, such as `pnpm setup`, then open a new terminal.
+`npm install -g p3stack` and `bun add -g p3stack` work too.
 
 To use it without installing the CLI, run `npx p3stack` instead. Every `p3stack` command below works the same way with `npx` in front.
 
 <img src="./assets/npx-p3stack.png" alt="npx p3stack asking which of Claude Code, Codex, Cursor, and OpenCode to install into" width="572">
 
-It finds which of Claude Code, Codex, Cursor, and OpenCode you have and asks which ones to set up. Use arrow keys and space to pick, then enter. To skip the question, pass `--all` or name the tools, as in `p3stack --tools claude,codex`. It needs Node 22 or newer and bash.
+Finds which of Claude Code, Codex, Cursor, and OpenCode you have and asks which ones to set up. Use arrow keys and space to pick, then enter. To skip the question, pass `--all` or name the tools, as in `p3stack --tools claude,codex`. Needs Node 22 or newer and bash.
 
-Without Node, run the installer script directly. It sets up every tool it finds, or only the ones you name after `install`:
+Without Node, run the installer script directly. Sets up every tool it finds, or only the ones you name after `install`:
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash
 curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- install claude codex
 ```
 
-The installer sets up both plugins in each tool. It prints each install, update, or uninstall command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent. For Claude Code, it also turns on the todo tools in your Claude settings, as the Claude Code section below describes.
+The installer sets up both plugins in each tool. Prints each install, update, or uninstall command it runs and is safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, comes out as a prompt to give your coding agent. For Claude Code, also turns on the todo tools in your Claude settings, as the Claude Code section below describes.
 
-It installs into your home folder, once per machine, and every project and T3 thread picks it up. Nothing is written into your repositories.
+Installs into your home folder, once per machine, and every project and T3 thread picks it up. Nothing is written into your repositories.
 
 One step stays manual. If you use Codex, run `codex` in a terminal, type `/hooks`, and trust the p3stack SessionStart hook. Codex skips hooks you haven't trusted, and T3 can't ask you. The installer reminds you when it's needed.
 
@@ -100,7 +100,7 @@ Without the hook, ask for poteto-mode by name at the start of each task.
 
 ### Cursor
 
-Cursor installs third-party plugins only through team marketplaces, which need a Teams admin. It also loads any plugin folder in `~/.cursor/plugins/local/`, so clone the repository and copy both plugins there. Copy them, don't link them: Cursor skips symlinked plugin folders.
+Cursor installs third-party plugins only through team marketplaces, which need a Teams admin. Cursor also loads any plugin folder in `~/.cursor/plugins/local/`, so clone the repository and copy both plugins there. Copy them, don't link them: Cursor skips symlinked plugin folders.
 
 ```shell
 git clone https://github.com/sandwichlegend/p3stack.git ~/.p3stack/repo
@@ -127,7 +127,7 @@ OpenCode doesn't get the `poteto-agent` and `comment-sicko` agents. p3stack spaw
 
 ### Then
 
-Run `/setup-pstack` once in any T3 thread. It reads the models T3 can run and writes `~/.p3stack/models.md`.
+Run `/setup-pstack` once in any T3 thread. Reads the models T3 can run and writes `~/.p3stack/models.md`.
 
 ## Update
 
@@ -137,7 +137,7 @@ The manifests leave out `version`, so each commit to `main` is a release.
 p3stack update
 ```
 
-It checks npm for a newer `p3stack` first and switches to it, so an old copy of the CLI doesn't run stale. If npm can't be reached, it carries on with the copy it has. To update the CLI itself, run `pnpm update -g p3stack`, or the npm or bun equivalent. The plugins themselves always come from `main`. Without Node, run `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update`.
+Checks npm for a newer `p3stack` first and switches to it, so an old copy of the CLI doesn't run stale. If npm can't be reached, carries on with the copy it has. To update the CLI itself, run `pnpm update -g p3stack`, or the npm or bun equivalent. The plugins themselves always come from `main`. Without Node, run `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update`.
 
 Start a new thread, or resume one, to load the update.
 
@@ -186,7 +186,7 @@ p3stack uninstall
 
 Or, without Node, `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- uninstall`.
 
-It removes the plugins and the Cursor copies. To remove the CLI afterward, run `pnpm remove -g p3stack`. It leaves `CLAUDE_CODE_ENABLE_TODO_TOOLS` in your Claude settings, because it can't tell whether you set it yourself, and prints where to delete it. It deletes your Codex `hooks.json` only when the file holds nothing but the p3stack hook it wrote. If you have other hooks there, it prints a prompt for your agent to remove just the p3stack entry.
+Removes the plugins and the Cursor copies. To remove the CLI afterward, run `pnpm remove -g p3stack`. Leaves `CLAUDE_CODE_ENABLE_TODO_TOOLS` in your Claude settings, because it can't tell whether you set it yourself, and prints where to delete it. Deletes your Codex `hooks.json` only when the file holds nothing but the p3stack hook it wrote. If you have other hooks there, prints a prompt for your agent to remove just the p3stack entry.
 
 By hand, Claude Code:
 
@@ -244,12 +244,12 @@ The [Subagents section of poteto-mode](./p3stack/skills/poteto-mode/SKILL.md#sub
 
 - `p3stack/` is the plugin, merged from upstream `pstack/`.
 - `team-kit/skills/` holds `deslop`, `control-ui`, and `control-cli`, each merged from upstream `cursor-team-kit/skills/`.
-- `cli/` is the `p3stack` npm package behind the `p3stack` command. It asks which tools to use and runs `install.sh`, which `npm pack` copies into the package.
+- `cli/` is the `p3stack` npm package behind the `p3stack` command. Asks which tools to use and runs `install.sh`, which `npm pack` copies into the package.
 - `scripts/subtrees.txt` maps each folder here to its upstream folder.
 - `scripts/removed.txt` lists upstream paths p3stack deletes.
-- `scripts/unported.txt` lists files that still use Cursor-only mechanics. It is empty after the port.
+- `scripts/unported.txt` lists files that still use Cursor-only mechanics. Empty after the port.
 - `scripts/ported.txt` lists upstream files outside the synced folders that p3stack copies, with the blob hash each copy matches and the part it ports.
-- `scripts/check-docs.mjs` is upstream's docs check, pointed at `p3stack/`. It fails when `p3stack/README.md` or the guide drifts from the tree: a skill, playbook, or agent left out, a wrong count, a broken link or anchor, or a model setup-pstack doesn't use.
+- `scripts/check-docs.mjs` is upstream's docs check, pointed at `p3stack/`. Fails when `p3stack/README.md` or the guide drifts from the tree: a skill, playbook, or agent left out, a wrong count, a broken link or anchor, or a model setup-pstack doesn't use.
 
 ## Syncing with upstream
 
@@ -257,7 +257,7 @@ The [Subagents section of poteto-mode](./p3stack/skills/poteto-mode/SKILL.md#sub
 scripts/sync-upstream.sh
 ```
 
-It fetches `cursor/plugins` into `refs/upstream/`, which are never pushed, and splits each upstream folder's history out with `git subtree split`. A split gives the same commits every run, so each sync is an ordinary subtree merge and only real edits conflict. The script keeps our plugin manifests when upstream bumps its version, keeps the paths in `scripts/removed.txt` deleted, and then runs `scripts/check.sh`. Before the checks, it stops if upstream changed a file in `scripts/ported.txt` or no longer has it. Its message says what to do, and step 4 of `scripts/sync-agent.md` covers both cases.
+Fetches `cursor/plugins` into `refs/upstream/`, which are never pushed, and splits each upstream folder's history out with `git subtree split`. A split gives the same commits every run, so each sync is an ordinary subtree merge and only real edits conflict. The script keeps our plugin manifests when upstream bumps its version, keeps the paths in `scripts/removed.txt` deleted, and then runs `scripts/check.sh`. Before the checks, stops if upstream changed a file in `scripts/ported.txt` or no longer has it. Its message says what to do, and step 4 of `scripts/sync-agent.md` covers both cases.
 
 A clean merge can still bring Cursor-only instructions into a file we already ported. `scripts/check.sh` fails on any Cursor-only term in a file that `scripts/unported.txt` doesn't list, so a sync can't land until every new Cursor mechanic is rewritten for T3. Run `scripts/check.sh --terms` to see each hit.
 
