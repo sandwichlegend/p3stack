@@ -130,7 +130,7 @@ for f in $listed; do
   [[ -f "$f" ]] || fail "scripts/unported.txt lists $f, which doesn't exist. Drop the line."
 done
 regained=$(comm -23 <(with_terms) <(printf '%s\n' "$listed" | grep -v '^$' || true))
-[[ -z "$regained" ]] || fail "Cursor-only terms in ported files. Port them to T3 (scripts/check.sh --terms):
+[[ -z "$regained" ]] || fail "Cursor-only terms in ported files. Port them to T3 Code (scripts/check.sh --terms):
 $(sed 's/^/  /' <<<"$regained")"
 finished=$(comm -13 <(with_terms) <(printf '%s\n' "$listed" | grep -v '^$' || true))
 [[ -z "$finished" ]] || fail "These files are fully ported. Drop them from scripts/unported.txt:

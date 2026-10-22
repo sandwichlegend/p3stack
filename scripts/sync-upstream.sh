@@ -64,7 +64,7 @@ while read -r here there; do
   settle_known_paths
   left=$(git diff --name-only --diff-filter=U)
   if [[ -n "$left" ]]; then
-    echo "Conflicts merging $there into $here. Port upstream's intent to T3, then run:" >&2
+    echo "Conflicts merging $there into $here. Port upstream's intent to T3 Code, then run:" >&2
     echo "  git add <files> && git commit --no-edit && scripts/sync-upstream.sh" >&2
     sed 's/^/  /' <<<"$left" >&2
     exit 1

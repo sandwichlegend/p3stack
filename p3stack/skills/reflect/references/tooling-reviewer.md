@@ -16,7 +16,7 @@ Examples of the pattern:
 - User describes a flaky test the agent could have queried via an observability MCP. Routing: the debugging skill should mention the observability MCP.
 - User links a chat thread the agent could have fetched via a chat MCP. Routing: the relevant skill should mention the chat MCP.
 
-Read the active T3 thread <THREAD_ID> with `t3_thread_read` and `view: "activity"`. Page the timeline with `afterPosition` set to the last `nextPosition` until it is null. When an item is `textTruncated`, read it again with its `itemId` and `textOffset` set to `nextTextOffset` until it is whole, before moving on. (Use the digest below if no thread id is given.)
+Read the active T3 Code thread <THREAD_ID> with `t3_thread_read` and `view: "activity"`. Page the timeline with `afterPosition` set to the last `nextPosition` until it is null. When an item is `textTruncated`, read it again with its `itemId` and `textOffset` set to `nextTextOffset` until it is whole, before moving on. (Use the digest below if no thread id is given.)
 
 Scan for:
 - Tool invocations and command flags the agent had to discover

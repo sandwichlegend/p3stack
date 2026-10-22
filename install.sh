@@ -361,11 +361,11 @@ finish() {
   if [[ $action == uninstall ]]; then
     say "p3stack is removed from:${done_tools:- nothing}. Your model choices stay in ~/.p3stack/."
   else
-    say "Start or resume a T3 thread to load p3stack."
-    [[ $action == install ]] && say "Then run /setup-pstack once in any T3 thread to pick models."
+    say "Start or resume a T3 Code thread to load p3stack."
+    [[ $action == install ]] && say "Then run /setup-pstack once in any T3 Code thread to pick models."
     [[ $done_tools == *cursor* ]] && say "Cursor doesn't run the startup hook, so type /poteto-mode at the start of each task there."
     if [[ $done_tools == *opencode* ]]; then
-      say "For OpenCode, use Refresh provider status in T3's Settings > Providers. OpenCode can keep its old config for about 30 seconds, so refresh again if p3stack's skills don't show."
+      say "For OpenCode, use Refresh provider status in T3 Code's Settings > Providers. OpenCode can keep its old config for about 30 seconds, so refresh again if p3stack's skills don't show."
     fi
   fi
   for tool in $failed; do
@@ -379,7 +379,7 @@ finish() {
   fi
   if [[ $trust_codex_hook == 1 ]]; then
     heading "One manual step"
-    say "Run codex in a terminal, type /hooks, and trust the p3stack SessionStart hook. Codex skips hooks you haven't trusted, and T3 can't ask you."
+    say "Run codex in a terminal, type /hooks, and trust the p3stack SessionStart hook. Codex skips hooks you haven't trusted, and T3 Code can't ask you."
   fi
   return 0
 }

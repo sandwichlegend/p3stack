@@ -35,15 +35,15 @@ When the model file is missing and it matters, ask whether the user wants to pic
 
 ## Get set up
 
-1. Install the `p3stack` and `p3stack-team-kit` plugins into each provider T3 runs, per the install section of the [repository README](https://github.com/sandwichlegend/p3stack#install).
-2. Run [`/setup-pstack`](../setup-pstack/SKILL.md). It reads the models T3 can run, asks for a reasoning budget, maps models to each role, and writes `~/.p3stack/models.md`. Every new spawn reads it. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
+1. Install the `p3stack` and `p3stack-team-kit` plugins into each provider T3 Code runs, per the install section of the [repository README](https://github.com/sandwichlegend/p3stack#install).
+2. Run [`/setup-pstack`](../setup-pstack/SKILL.md). It reads the models T3 Code can run, asks for a reasoning budget, maps models to each role, and writes `~/.p3stack/models.md`. Every new spawn reads it. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
 3. Start a real task with `/poteto-mode`, a goal, and a check that can pass or fail.
 
 Installing changes nothing until the user invokes a skill. Only `/setup-pstack` loads from the user's words. The [README](../../README.md) and [guide page 1](../../docs/guide/01-setup.md) have the details. Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).
 
 If cost is the worry, say where the tokens go and how to spend fewer. pstack spends extra tokens on subagents and review panels. Rerun `/setup-pstack` and pick a smaller budget or cheaper models. A role set to `inherit` runs on the chat's model, which saves tokens when the chat runs on a cheaper model. A shorter panel list runs fewer subagents, one for each seat. Save `/poteto-mode` for work that needs rigor.
 
-p3stack is built for T3 Code. Its workflow skills, including `/poteto-mode`, `/how`, `/why`, and `/teach`, spawn subagents through T3's `delegate_task` tool, so they need a T3 session with the `t3-code` MCP server. Outside T3 those parts don't work.
+p3stack is built for T3 Code. Its workflow skills, including `/poteto-mode`, `/how`, `/why`, and `/teach`, spawn subagents through T3 Code's `delegate_task` tool, so they need a T3 Code session with the `t3-code` MCP server. Outside T3 Code those parts don't work.
 
 ## Start a task with `/poteto-mode`
 
@@ -93,7 +93,7 @@ The default answer is `/poteto-mode`, which runs most of the others when its ste
 | Turn their own working habits into a personal mode skill | [`/automate-me`](../automate-me/SKILL.md) |
 | Turn what a finished task taught into skill edits | [`/reflect`](../reflect/SKILL.md) |
 | Stop agents from repeating the same mistakes in this repo | [`/correct`](../correct/SKILL.md) |
-| Build a page whose buttons wake a T3 thread over a webhook | [`/make-bot-ui`](../make-bot-ui/SKILL.md) |
+| Build a page whose buttons wake a T3 Code thread over a webhook | [`/make-bot-ui`](../make-bot-ui/SKILL.md) |
 | Find their way around pstack | `/poteto-help` |
 
 If a skill directory next to this one is missing from the table, read its frontmatter and route by its description. The `principle-*` directories are covered under principles below.
@@ -110,7 +110,7 @@ Close calls:
 Not in pstack:
 
 - `/deslop`, `control-cli`, and `control-ui` ship in the `p3stack-team-kit` plugin.
-- Waking on a schedule or a PR change uses T3's `schedule_task` and `watch_pull_request` tools, not a skill.
+- Waking on a schedule or a PR change uses T3 Code's `schedule_task` and `watch_pull_request` tools, not a skill.
 - pstack has no `/orchestrate` skill. Orchestrate is a `/poteto-mode` playbook. If the slash menu shows `/orchestrate`, another plugin provides it.
 
 ## Playbooks and principles
@@ -126,7 +126,7 @@ Playbooks are step lists inside `/poteto-mode`, not skills, so they have no slas
 
 Without `/poteto-mode`, a phrase such as "babysit this pr" gets the provider's default behavior instead. The Playbooks section of [`poteto-mode`](../poteto-mode/SKILL.md) lists every playbook and when it applies. [Guide page 6](../../docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
 
-pstack has no planning skill. T3's plan mode works alongside it. For work that spans phases or stacked PRs, asking `/poteto-mode` for a plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/architect` settles it in code first.
+pstack has no planning skill. T3 Code's plan mode works alongside it. For work that spans phases or stacked PRs, asking `/poteto-mode` for a plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/architect` settles it in code first.
 
 Principles are one-rule skills that `/poteto-mode` reads and cites in its replies. The user rarely invokes one. They steer with the names instead, as in "apply prove it works. show me the real output." Typing `/principle-<name>` still loads one on demand. [Guide page 8](../../docs/guide/08-principles.md) lists them.
 

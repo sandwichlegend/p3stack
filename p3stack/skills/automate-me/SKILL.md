@@ -1,6 +1,6 @@
 ---
 name: automate-me
-description: "Use for \"automate me\", \"create/update/refresh my -mode skill\", \"turn/capture my preferences or working style into a skill\", or wanting agents to follow how the user works. Drafts or revises a personal -mode skill via the authoring playbook + unslop, optionally pulling fresh evidence from recent T3 threads."
+description: "Use for \"automate me\", \"create/update/refresh my -mode skill\", \"turn/capture my preferences or working style into a skill\", or wanting agents to follow how the user works. Drafts or revises a personal -mode skill via the authoring playbook + unslop, optionally pulling fresh evidence from recent T3 Code threads."
 disable-model-invocation: true
 ---
 
@@ -26,7 +26,7 @@ Update mode changes the rest of the flow:
 
 ### 1. Mine their history
 
-Your history is the current project's T3 threads. `t3_thread_list` lists them newest first, and `t3_thread_read` reads one. Stay inside the current project. Other projects' threads are private chats from unrelated work.
+Your history is the current project's T3 Code threads. `t3_thread_list` lists them newest first, and `t3_thread_read` reads one. Stay inside the current project. Other projects' threads are private chats from unrelated work.
 
 Survey recent agent conversations within that scope for recurring patterns. Run multiple parallel subagents across slices of history (e.g. last 2-4 weeks, split into 3 slices so each has enough material). Pick each subagent's reasoning level and fast or standard speed for the job, per the Subagents section of the **poteto-mode** skill. Each slice mining subagent reads the thread ids the parent assigns it with `t3_thread_read`, looks for the signals below, and returns a short structured list of patterns it saw with evidence pointers. Default signals worth hunting:
 
@@ -66,7 +66,7 @@ The **poteto-mode** skill shows the shape. Read it for granularity. Don't copy i
 
 Author the skill per the **poteto-mode** skill's Authoring a skill playbook (`../poteto-mode/playbooks/authoring-a-skill.md`). Placement:
 
-- Path: preserve an existing mode skill's category. For a new mode, use `.agents/skills/<handle>/<handle>-mode/SKILL.md` when the repo has an established personal category for that handle. Otherwise default to `.agents/skills/<handle>-mode/SKILL.md` in the project (or `~/.agents/skills/<handle>-mode/` if the user prefers a personal skill). Link it into `.claude/skills/` and `.cursor/skills/` per the Subagents section of **poteto-mode**, so every T3 provider loads it.
+- Path: preserve an existing mode skill's category. For a new mode, use `.agents/skills/<handle>/<handle>-mode/SKILL.md` when the repo has an established personal category for that handle. Otherwise default to `.agents/skills/<handle>-mode/SKILL.md` in the project (or `~/.agents/skills/<handle>-mode/` if the user prefers a personal skill). Link it into `.claude/skills/` and `.cursor/skills/` per the Subagents section of **poteto-mode**, so every T3 Code provider loads it.
 - Handle: the user's first name or chosen identifier.
 - Frontmatter `description`: trigger on their name + `/<handle>-mode` + "work in their style", not on generic keywords like "write code" or "review PR".
 - Frontmatter formatting: valid YAML. Keep `description` as one YAML scalar. Quote it or use `description: >-` with indented continuation lines when punctuation or wrapping requires it.

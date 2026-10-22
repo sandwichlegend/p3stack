@@ -32,12 +32,12 @@ Walk through what each line buys you:
 - "done means..." turns the goal into checks every iteration can run.
 - "fresh worktree off `<base>`" keeps the run from colliding with anything else you have open.
 - "don't ask me before committing" pre-answers the permission the agent would otherwise block on.
-- "keep going until done" hands the run to the [Autonomous run playbook](../../skills/poteto-mode/playbooks/autonomous-run.md). It re-checks the finish condition whenever T3 wakes the thread: a subagent finishing, a watched PR changing, or an hourly `schedule_task` heartbeat.
+- "keep going until done" hands the run to the [Autonomous run playbook](../../skills/poteto-mode/playbooks/autonomous-run.md). It re-checks the finish condition whenever T3 Code wakes the thread: a subagent finishing, a watched PR changing, or an hourly `schedule_task` heartbeat.
 - The escape hatch lets it stop at a genuine dead end and write up why, which beats eight hours of creative goal reinterpretation.
 
 Because you'll review this work after stepping away, `/poteto-mode` routes it through [`/figure-it-out`](../../skills/figure-it-out/SKILL.md), which designs the run's phases before any code and wires in the decision log.
 
-To stop a run on purpose, tell the agent to pause, or that you're about to go offline or restart T3. The [Pause safely playbook](../../skills/poteto-mode/playbooks/pause-safely.md) finishes or backs out of the current step, commits a work-in-progress checkpoint, and writes a resume note. A fresh chat picks the work up from that note through the Session pickup playbook. Saying "keep going" never triggers a pause.
+To stop a run on purpose, tell the agent to pause, or that you're about to go offline or restart T3 Code. The [Pause safely playbook](../../skills/poteto-mode/playbooks/pause-safely.md) finishes or backs out of the current step, commits a work-in-progress checkpoint, and writes a resume note. A fresh chat picks the work up from that note through the Session pickup playbook. Saying "keep going" never triggers a pause.
 
 ## What the loop does all night
 
@@ -93,12 +93,12 @@ The contract above drives one task to one finish condition. Some nights hold mor
 
 ## Run many projects in parallel
 
-A T3 thread can be a coordinator. It doesn't write code. It directs delegated subagents, each in its own worktree, and T3 wakes it as they finish. That's the shape the Orchestrate playbook expects. Start your prompts to the coordinator with `/poteto-mode`, and the subagents it spawns follow the playbooks. Every agent runs on your machine, so keep it awake and plugged in while the work runs.
+A T3 Code thread can be a coordinator. It doesn't write code. It directs delegated subagents, each in its own worktree, and T3 Code wakes it as they finish. That's the shape the Orchestrate playbook expects. Start your prompts to the coordinator with `/poteto-mode`, and the subagents it spawns follow the playbooks. Every agent runs on your machine, so keep it awake and plugged in while the work runs.
 
 A few habits help:
 
 - Give each body of work its own coordinator thread, such as a feature, a migration, a perf push, or a tech-debt cleanup. Several can run side by side, within what your machine can carry.
-- Point the coordinator at related threads, finished ones included. `/recall` and the Session pickup playbook read them through T3.
+- Point the coordinator at related threads, finished ones included. `/recall` and the Session pickup playbook read them through T3 Code.
 - Give each PR a verification swarm before it merges, and let Autopilot-stack or Autopilot-full carry the queue.
 - Ask the coordinator for a plan backed by data, and have it answer open questions with prototypes before it asks you.
 
@@ -110,7 +110,7 @@ One prompt can carry a whole Project, from research through execution:
 
 ## Let loops start themselves
 
-Every loop above still waits for you to start it. A T3 scheduled task removes that step. `schedule_task` runs a prompt on a timer, such as weekday mornings, or on each request to a webhook URL, such as a GitHub event signed with a secret you enter privately. Software maintenance splits into stages that suit this well: triage a report, reproduce it, fix it, verify the fix. Two rules keep such a line trustworthy:
+Every loop above still waits for you to start it. A T3 Code scheduled task removes that step. `schedule_task` runs a prompt on a timer, such as weekday mornings, or on each request to a webhook URL, such as a GitHub event signed with a secret you enter privately. Software maintenance splits into stages that suit this well: triage a report, reproduce it, fix it, verify the fix. Two rules keep such a line trustworthy:
 
 - Every stage can stop the line. Triage can decide the report is expected behavior, repro can fail to reproduce it, and the fixer can judge the change too risky. Each of those outcomes is useful, because it keeps bad work from reaching the next stage, where it costs more to undo.
 - Every stage hands over evidence. Repro attaches screenshots and video of the broken state, and the fix attaches before-and-after proof. A human can then check that the agent fixed the right thing before reading a line of code.
