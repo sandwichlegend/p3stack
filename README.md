@@ -15,12 +15,17 @@ You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, w
 ### One command
 
 ```shell
-npx p3stack
+pnpm add -g p3stack
+p3stack
 ```
+
+`npm install -g p3stack` and `bun add -g p3stack` work too. If pnpm or bun says its global folder isn't on your PATH, follow the fix it prints, such as `pnpm setup`, then open a new terminal.
+
+To use it without installing the CLI, run `npx p3stack` instead. Every `p3stack` command below works the same way with `npx` in front.
 
 <img src="./assets/npx-p3stack.png" alt="npx p3stack asking which of Claude Code, Codex, Cursor, and OpenCode to install into" width="572">
 
-It finds which of Claude Code, Codex, Cursor, and OpenCode you have and asks which ones to set up. Use arrow keys and space to pick, then enter. To skip the question, pass `--all` or name the tools, as in `npx p3stack --tools claude,codex`. It needs Node 22 or newer and bash.
+It finds which of Claude Code, Codex, Cursor, and OpenCode you have and asks which ones to set up. Use arrow keys and space to pick, then enter. To skip the question, pass `--all` or name the tools, as in `p3stack --tools claude,codex`. It needs Node 22 or newer and bash.
 
 Without Node, run the installer script directly. It sets up every tool it finds, or only the ones you name after `install`:
 
@@ -129,10 +134,10 @@ Run `/setup-pstack` once in any T3 thread. It reads the models T3 can run and wr
 The manifests leave out `version`, so each commit to `main` is a release.
 
 ```shell
-npx p3stack update
+p3stack update
 ```
 
-It checks npm for a newer `p3stack` first and switches to it, so a cached copy doesn't run stale. If npm can't be reached, it carries on with the copy it has. The plugins themselves always come from `main`. Without Node, run `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update`.
+It checks npm for a newer `p3stack` first and switches to it, so an old copy of the CLI doesn't run stale. If npm can't be reached, it carries on with the copy it has. To update the CLI itself, run `pnpm update -g p3stack`, or the npm or bun equivalent. The plugins themselves always come from `main`. Without Node, run `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update`.
 
 Start a new thread, or resume one, to load the update.
 
@@ -176,12 +181,12 @@ Then use Refresh provider status in T3's Settings > Providers.
 ## Uninstall
 
 ```shell
-npx p3stack uninstall
+p3stack uninstall
 ```
 
 Or, without Node, `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- uninstall`.
 
-It removes the plugins and the Cursor copies. It leaves `CLAUDE_CODE_ENABLE_TODO_TOOLS` in your Claude settings, because it can't tell whether you set it yourself, and prints where to delete it. It deletes your Codex `hooks.json` only when the file holds nothing but the p3stack hook it wrote. If you have other hooks there, it prints a prompt for your agent to remove just the p3stack entry.
+It removes the plugins and the Cursor copies. To remove the CLI afterward, run `pnpm remove -g p3stack`. It leaves `CLAUDE_CODE_ENABLE_TODO_TOOLS` in your Claude settings, because it can't tell whether you set it yourself, and prints where to delete it. It deletes your Codex `hooks.json` only when the file holds nothing but the p3stack hook it wrote. If you have other hooks there, it prints a prompt for your agent to remove just the p3stack entry.
 
 By hand, Claude Code:
 
@@ -239,7 +244,7 @@ The [Subagents section of poteto-mode](./p3stack/skills/poteto-mode/SKILL.md#sub
 
 - `p3stack/` is the plugin, merged from upstream `pstack/`.
 - `team-kit/skills/` holds `deslop`, `control-ui`, and `control-cli`, each merged from upstream `cursor-team-kit/skills/`.
-- `cli/` is the `p3stack` npm package behind `npx p3stack`. It asks which tools to use and runs `install.sh`, which `npm pack` copies into the package.
+- `cli/` is the `p3stack` npm package behind the `p3stack` command. It asks which tools to use and runs `install.sh`, which `npm pack` copies into the package.
 - `scripts/subtrees.txt` maps each folder here to its upstream folder.
 - `scripts/removed.txt` lists upstream paths p3stack deletes.
 - `scripts/unported.txt` lists files that still use Cursor-only mechanics. It is empty after the port.

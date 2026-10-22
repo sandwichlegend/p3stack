@@ -19,7 +19,7 @@ const installer = [new URL("../install.sh", import.meta.url), new URL("../../ins
 
 const usage = `Install, update, or remove p3stack in the AI coding tools T3 Code runs.
 
-Usage: npx p3stack [install|update|uninstall] [--all | --tools claude,codex,cursor,opencode]
+Usage: p3stack [install|update|uninstall] [--all | --tools claude,codex,cursor,opencode]
 
   install    Add p3stack to the tools you pick (default)
   update     Pull the latest p3stack into the tools you pick
@@ -184,7 +184,7 @@ const { action, chosen } = parse(process.argv.slice(2))
 await runLatest([action, ...(chosen ? [`--tools=${chosen.join(",")}`] : [])])
 banner()
 if (!installer) {
-  console.error("p3stack: install.sh is missing from this package. Reinstall with npx p3stack@latest.")
+  console.error("p3stack: install.sh is missing from this package. Reinstall with pnpm add -g p3stack@latest, or run npx p3stack@latest.")
   process.exit(1)
 }
 
