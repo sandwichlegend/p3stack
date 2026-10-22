@@ -71,6 +71,8 @@ done
 
 bash -n install.sh || fail "install.sh has a syntax error"
 [[ -x install.sh ]] || fail "install.sh is not executable"
+node --check cli/bin/p3stack.mjs || fail "cli/bin/p3stack.mjs has a syntax error"
+[[ -x cli/bin/p3stack.mjs ]] || fail "cli/bin/p3stack.mjs is not executable"
 
 hook=p3stack/hooks/session-start
 [[ -x "$hook" ]] || fail "$hook is missing or not executable"
