@@ -11,6 +11,7 @@ codex_hooks=$codex_home/hooks.json
 cursor_local=$HOME/.cursor/plugins/local
 cursor_clone=$HOME/.p3stack/repo
 opencode_spec=github:$repo
+tool_names="claude codex cursor opencode"
 agent_tasks=()
 trust_codex_hook=0
 
@@ -18,11 +19,15 @@ usage() {
   cat <<EOF
 Install p3stack into the AI coding tools T3 Code runs: Claude Code, Codex, Cursor, and OpenCode.
 
-Usage: install.sh [install|update|uninstall]
+Usage: install.sh [install|update|uninstall] [tool...]
+       install.sh detect
 
   install    Add p3stack and p3stack-team-kit to every tool found (default)
   update     Pull the latest p3stack into every tool found
   uninstall  Remove p3stack from every tool found
+  detect     Print the tools found on this machine, one per line
+
+Tools: $tool_names. Name some to act on only those.
 
 Run it from a terminal, once per machine. Safe to run again.
 Anything it can't do with certainty, it hands to your coding agent as a prompt.
@@ -383,13 +388,22 @@ main() {
   local action=install
   case ${1:-install} in
     install|update|uninstall) action=${1:-install} ;;
+    detect)
+      [[ $# -le 1 ]] || { warn "detect takes no tools"; exit 2; }
+      for tool in $tool_names; do "${tool}_found" && say "$tool"; done
+      exit 0
+      ;;
     -h|--help|help) usage; exit 0 ;;
     *) warn "unknown argument: $1"; usage >&2; exit 2 ;;
   esac
-  [[ $# -le 1 ]] || { warn "too many arguments"; usage >&2; exit 2; }
+  shift || true
+  for tool in "$@"; do
+    [[ " $tool_names " == *" $tool "* ]] || { warn "unknown tool: $tool"; usage >&2; exit 2; }
+  done
+  local wanted=${*:-$tool_names}
 
   local done_tools="" failed="" skipped=""
-  for tool in claude codex cursor opencode; do
+  for tool in $wanted; do
     if ! "${tool}_found"; then
       skipped="$skipped $tool"
       continue

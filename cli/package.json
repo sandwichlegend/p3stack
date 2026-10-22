@@ -1,0 +1,26 @@
+{
+  "name": "p3stack",
+  "version": "0.1.0",
+  "description": "Install and update p3stack in Claude Code, Codex, Cursor, and OpenCode for T3 Code",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sandwichlegend/p3stack.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/sandwichlegend/p3stack#readme",
+  "type": "module",
+  "bin": {
+    "p3stack": "bin/p3stack.mjs"
+  },
+  "files": [
+    "bin",
+    "install.sh"
+  ],
+  "scripts": {
+    "prepack": "cp ../install.sh install.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

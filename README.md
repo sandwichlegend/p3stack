@@ -15,10 +15,19 @@ You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, w
 ### One command
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash
+npx p3stack
 ```
 
-The installer finds which of Claude Code, Codex, Cursor, and OpenCode you have and sets up both plugins in each. It prints each install, update, or uninstall command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent. For Claude Code, it also turns on the todo tools in your Claude settings, as the Claude Code section below describes.
+It finds which of Claude Code, Codex, Cursor, and OpenCode you have and asks which ones to set up. Use arrow keys and space to pick, then enter. To skip the question, pass `--all` or name the tools, as in `npx p3stack --tools claude,codex`. It needs Node 18 or newer and bash.
+
+Without Node, run the installer script directly. It sets up every tool it finds, or only the ones you name after `install`:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- install claude codex
+```
+
+The installer sets up both plugins in each tool. It prints each install, update, or uninstall command it runs, and it's safe to run again. Anything it can't do with certainty, such as editing a Codex `hooks.json` you already have, it prints as a prompt to give your coding agent. For Claude Code, it also turns on the todo tools in your Claude settings, as the Claude Code section below describes.
 
 It installs into your home folder, once per machine, and every project and T3 thread picks it up. Nothing is written into your repositories.
 
@@ -118,8 +127,10 @@ Run `/setup-pstack` once in any T3 thread. It reads the models T3 can run and wr
 The manifests leave out `version`, so each commit to `main` is a release.
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update
+npx p3stack update
 ```
+
+It checks npm for a newer `p3stack` first and switches to it, so a cached copy never runs stale. The plugins themselves always come from `main`. Without Node, run `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update`.
 
 Start a new thread, or resume one, to load the update.
 
@@ -163,8 +174,10 @@ Then use Refresh provider status in T3's Settings > Providers.
 ## Uninstall
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- uninstall
+npx p3stack uninstall
 ```
+
+Or, without Node, `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- uninstall`.
 
 It removes the plugins and the Cursor copies. It leaves `CLAUDE_CODE_ENABLE_TODO_TOOLS` in your Claude settings, because it can't tell whether you set it yourself, and prints where to delete it. It deletes your Codex `hooks.json` only when the file holds nothing but the p3stack hook it wrote. If you have other hooks there, it prints a prompt for your agent to remove just the p3stack entry.
 
@@ -224,6 +237,7 @@ The [Subagents section of poteto-mode](./p3stack/skills/poteto-mode/SKILL.md#sub
 
 - `p3stack/` is the plugin, merged from upstream `pstack/`.
 - `team-kit/skills/` holds `deslop`, `control-ui`, and `control-cli`, each merged from upstream `cursor-team-kit/skills/`.
+- `cli/` is the `p3stack` npm package behind `npx p3stack`. It asks which tools to use and runs `install.sh`, which `npm pack` copies into the package.
 - `scripts/subtrees.txt` maps each folder here to its upstream folder.
 - `scripts/removed.txt` lists upstream paths p3stack deletes.
 - `scripts/unported.txt` lists files that still use Cursor-only mechanics. It is empty after the port.
