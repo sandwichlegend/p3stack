@@ -18,6 +18,8 @@ You get two plugins: `p3stack`, the skills and agents, and `p3stack-team-kit`, w
 npx p3stack
 ```
 
+<img src="./assets/npx-p3stack.png" alt="npx p3stack asking which of Claude Code, Codex, Cursor, and OpenCode to install into" width="572">
+
 It finds which of Claude Code, Codex, Cursor, and OpenCode you have and asks which ones to set up. Use arrow keys and space to pick, then enter. To skip the question, pass `--all` or name the tools, as in `npx p3stack --tools claude,codex`. It needs Node 22 or newer and bash.
 
 Without Node, run the installer script directly. It sets up every tool it finds, or only the ones you name after `install`:
