@@ -130,7 +130,7 @@ The manifests leave out `version`, so each commit to `main` is a release.
 npx p3stack update
 ```
 
-It checks npm for a newer `p3stack` first and switches to it, so a cached copy never runs stale. The plugins themselves always come from `main`. Without Node, run `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update`.
+It checks npm for a newer `p3stack` first and switches to it, so a cached copy doesn't run stale. If npm can't be reached, it carries on with the copy it has. The plugins themselves always come from `main`. Without Node, run `curl -fsSL https://raw.githubusercontent.com/sandwichlegend/p3stack/main/install.sh | bash -s -- update`.
 
 Start a new thread, or resume one, to load the update.
 

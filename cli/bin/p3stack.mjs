@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
+import { emitKeypressEvents } from "node:readline"
 import { fileURLToPath } from "node:url"
 
 const tools = {
@@ -45,6 +46,7 @@ function parse(argv) {
       const value = arg === "--tools" ? argv[++i] : arg.slice("--tools=".length)
       if (!value) fail("--tools needs a list, such as --tools claude,codex")
       chosen = value.split(",").map((tool) => tool.trim()).filter(Boolean)
+      if (!chosen.length) fail("--tools needs at least one tool, such as --tools claude,codex")
       const unknown = chosen.filter((tool) => !(tool in tools))
       if (unknown.length) fail(`unknown tool: ${unknown.join(", ")}`)
     } else fail(`unknown argument: ${arg}`)
@@ -88,44 +90,59 @@ function pick(title, items) {
   }
 
   return new Promise((resolve) => {
-    const done = (value) => {
+    const restore = () => {
+      stdin.off("keypress", onKey)
       stdin.setRawMode(false)
       stdin.pause()
-      stdin.off("data", onKey)
       stdout.write("\x1b[?25h")
+    }
+    const onSignal = (signal) => {
+      restore()
+      process.kill(process.pid, signal)
+    }
+    const signals = ["SIGTERM", "SIGHUP"]
+    const done = (value) => {
+      restore()
+      process.off("exit", restore)
+      signals.forEach((signal) => process.off(signal, onSignal))
       resolve(value)
     }
-    const onKey = (key) => {
-      if (key === "\x03" || key === "q" || key === "\x1b") return done(null)
-      if (key === "\r" || key === "\n") return done(items.map((item) => item.value).filter((v) => selected.has(v)))
-      if (key === "\x1b[A" || key === "k") cursor = (cursor + items.length - 1) % items.length
-      if (key === "\x1b[B" || key === "j") cursor = (cursor + 1) % items.length
-      if (key === " ") {
+    const onKey = (_, key = {}) => {
+      if ((key.ctrl && key.name === "c") || key.name === "q" || key.name === "escape") return done(null)
+      if (key.name === "return" || key.name === "enter") return done(items.map((item) => item.value).filter((v) => selected.has(v)))
+      if (key.name === "up" || key.name === "k") cursor = (cursor + items.length - 1) % items.length
+      if (key.name === "down" || key.name === "j") cursor = (cursor + 1) % items.length
+      if (key.name === "space") {
         const value = items[cursor].value
         selected.has(value) ? selected.delete(value) : selected.add(value)
       }
-      if (key === "a") {
+      if (key.name === "a") {
         const all = selected.size === items.length
         items.forEach((item) => (all ? selected.delete(item.value) : selected.add(item.value)))
       }
       draw()
     }
+    process.once("exit", restore)
+    signals.forEach((signal) => process.once(signal, onSignal))
     stdout.write("\x1b[?25l")
+    emitKeypressEvents(stdin)
     stdin.setRawMode(true)
-    stdin.setEncoding("utf8")
-    stdin.on("data", onKey)
+    stdin.on("keypress", onKey)
     stdin.resume()
     draw()
   })
 }
 
-const newer = (a, b) => {
-  const [x, y] = [a, b].map((v) => v.split(".").map(Number))
-  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]
-  return false
+function newer(latest, current) {
+  const parse = (v) => v.match(/^(\d+)\.(\d+)\.(\d+)(-.+)?/)
+  const [l, c] = [parse(latest), parse(current)]
+  if (!l || !c) return false
+  for (let i = 1; i <= 3; i++) if (+l[i] !== +c[i]) return +l[i] > +c[i]
+  return Boolean(c[4]) && !l[4]
 }
 
 // A global install, or an npx cache on older npm, can run a stale copy. Hand off to the published latest so `npx p3stack update` never needs @latest.
+// The handoff gets canonical arguments with no spaces, because Windows runs npx through cmd.exe, which would split quoted values.
 async function runLatest(argv) {
   if (process.env.P3STACK_HANDOFF) return
   const { name, version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))
@@ -163,9 +180,8 @@ function banner() {
   stdout.write(`\n${lines.join("\n")}\n\n`)
 }
 
-const argv = process.argv.slice(2)
-const { action, chosen } = parse(argv)
-await runLatest(argv)
+const { action, chosen } = parse(process.argv.slice(2))
+await runLatest([action, ...(chosen ? [`--tools=${chosen.join(",")}`] : [])])
 banner()
 if (!installer) {
   console.error("p3stack: install.sh is missing from this package. Reinstall with npx p3stack@latest.")
@@ -194,4 +210,5 @@ if (!picked) {
   } else picked = found
 }
 
+if (!picked.length) process.exit(1)
 process.exit(bash([action, ...picked], { stdio: "inherit" }).status ?? 1)

@@ -422,7 +422,11 @@ main() {
   [[ -n $skipped ]] && say "not found, skipped:${skipped}"
   [[ -n $failed ]] && say "stopped:${failed}"
   if [[ -z $done_tools && -z $failed ]]; then
-    say "None of Claude Code, Codex, Cursor, or OpenCode was found on this machine."
+    if [[ $# -gt 0 ]]; then
+      say "None of the tools you named was found on this machine:$skipped."
+    else
+      say "None of Claude Code, Codex, Cursor, or OpenCode was found on this machine."
+    fi
     exit 1
   fi
   finish "$action" "$done_tools" "$failed"
