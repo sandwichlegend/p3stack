@@ -488,6 +488,15 @@ test_sha256_falls_back_to_shasum() {
   has "$claude/skills/poteto-mode/SKILL.md" "Write the code test first."
 }
 
+test_incomplete_lock_is_recovered() {
+  setup incomplete-lock both
+  mkdir "$home/.p3stack/lock"
+  touch -t 200001010000 "$home/.p3stack/lock"
+  update_answering "a\n"
+  recorded claude
+  absent "$home/.p3stack/lock"
+}
+
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
 for name in ${*:-$cases}; do
   case_failed=0
