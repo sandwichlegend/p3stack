@@ -470,6 +470,24 @@ test_auto_updated_folder_missing_warns_once() {
   [[ $(grep -c "Edits made before the auto-update may be" "$dir/out") == 1 ]] || fail "expected one missing-folder warning"
 }
 
+test_background_auto_updates_recover_opencode_folder() {
+  setup auto-opencode clean
+  local package=$home/.cache/opencode/npm/git-p3stack-0123456789ab
+  echo "My OpenCode edit." >>"$package/0000000000001/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md"
+  (eval "$(cat "$dir.env")"; opencode plugin update github:sandwichlegend/p3stack)
+  update_answering "n\n"
+  has "$package/0000000000003/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md" "My OpenCode edit."
+  says "before the background auto-update"
+}
+
+test_sha256_falls_back_to_shasum() {
+  setup shasum kept
+  [[ -L $dir/sys/shasum ]] || return 0
+  rm "$dir/sys/sha256sum"
+  update_answering ""
+  has "$claude/skills/poteto-mode/SKILL.md" "Write the code test first."
+}
+
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
 for name in ${*:-$cases}; do
   case_failed=0

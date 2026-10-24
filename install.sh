@@ -407,9 +407,9 @@ cursor_root() { [[ -d $cursor_local/$1 ]] && printf '%s' "$cursor_local/$1"; }
 cursor_commit() { git -C "$release_clone" rev-parse --verify --quiet 'HEAD^{commit}'; }
 
 opencode_v2() {
-  local version
+  local version pattern='v?([0-9]+)\.'
   version=$(query opencode --version) || return 1
-  if [[ ! $version =~ v?([0-9]+)\. ]] || ((BASH_REMATCH[1] < 2)); then
+  if [[ ! $version =~ $pattern ]] || ((BASH_REMATCH[1] < 2)); then
     warn "p3stack needs OpenCode V2, and this is ${version:-an unknown version}. Install @opencode/cli to upgrade."
     return 1
   fi
@@ -445,10 +445,10 @@ opencode_root() {
 }
 
 opencode_commit() {
-  local package lock
+  local package lock pattern='#([0-9a-f]{40})'
   package=$(opencode_package) || return 1
   lock=$(cat "$(dirname "$package")/.package-lock.json" 2>/dev/null) || return 1
-  [[ $lock =~ \#([0-9a-f]{40}) ]] && printf '%s' "${BASH_REMATCH[1]}"
+  [[ $lock =~ $pattern ]] && printf '%s' "${BASH_REMATCH[1]}"
 }
 
 tool_label() {
@@ -467,7 +467,9 @@ subtree() {
   esac
 }
 
-tilde() { printf '%s' "${1/#$HOME/\~}"; }
+tilde() {
+  if [[ $1 == "$HOME" || $1 == "$HOME/"* ]]; then printf '~%s' "${1#"$HOME"}"; else printf '%s' "$1"; fi
+}
 upper() { tr '[:lower:]' '[:upper:]' <<<"$1"; }
 and_list() { awk -v n=$# 'NR > 1 { printf (NR == n ? " and " : ", ") } { printf "%s", $0 } END { print "" }' < <(printf '%s\n' "$@"); }
 comma_list() { printf '%s\n' "$@" | paste -sd, - | sed 's/,/, /g'; }
@@ -671,12 +673,12 @@ launch_agent() {
 }
 
 label() {
-  local path=$1
-  [[ $path =~ ^skills/([^/]+)/SKILL\.md$ ]] && { say "${BASH_REMATCH[1]}"; return; }
+  local path=$1 pattern='^skills/([^/]+)/SKILL\.md$'
+  [[ $path =~ $pattern ]] && { say "${BASH_REMATCH[1]}"; return; }
   say "${path#skills/}"
 }
 
-skill_of() { [[ $1 =~ ^skills/([^/]+)/ ]] && say "${BASH_REMATCH[1]}"; }
+skill_of() { local pattern='^skills/([^/]+)/'; [[ $1 =~ $pattern ]] && say "${BASH_REMATCH[1]}"; }
 
 has_frontmatter() { [[ -f $1 && $(head -1 "$1" | tr -d '\r') == --- ]]; }
 
