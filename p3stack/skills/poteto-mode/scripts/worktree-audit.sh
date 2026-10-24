@@ -114,7 +114,7 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
 	last="-"; last_ts=0
 	if [ ${#transcript_dirs[@]} -gt 0 ]; then
 		f=$(rg -l -e "${wt}/" -e "${wt}\"" "${transcript_dirs[@]}" 2>/dev/null \
-			| xargs -r stat "${stat_fmt[@]}" 2>/dev/null | sort -rn | head -1)
+			| xargs stat "${stat_fmt[@]}" 2>/dev/null | sort -rn | head -1)
 		if [ -n "$f" ]; then last_ts=$(echo "$f" | awk '{print $1}')
 			last=$(fmt_day "$last_ts" 2>/dev/null); fi
 	fi
