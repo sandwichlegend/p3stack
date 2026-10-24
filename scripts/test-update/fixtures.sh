@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-scenarios="clean kept copy both hand nobody removed first script"
+scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin"
 scenario=${1:-}
 [[ " $scenarios " == *" $scenario "* && -n ${2:-} ]] || { echo "usage: fixtures.sh <$(tr ' ' '|' <<<"$scenarios")> <dir>" >&2; exit 2; }
 
@@ -16,11 +16,13 @@ rm -rf "$home" "$release" "$origin" "$dir/bin" "$dir/sys"
 mkdir -p "$home" "$dir/bin" "$dir/sys"
 
 for command in bash env git tar awk sed grep sha256sum shasum find sort diff cp mv rm mkdir cat ln ls head tail tr cut \
-  dirname basename mktemp touch chmod wc uname paste readlink sleep date python3 xcode-select; do
+  dirname basename mktemp touch chmod wc uname paste readlink sleep date python3 xcode-select kill cmp rmdir; do
   path=$(command -v "$command" 2>/dev/null) && ln -s "$path" "$dir/sys/$command"
 done
 
 case $scenario in
+  added) tools="codex cursor-agent" ;;
+  interrupted) tools="codex" ;;
   clean) tools="claude codex cursor-agent opencode" ;;
   copy|both|nobody|first) tools="claude codex" ;;
   *) tools="claude" ;;
@@ -33,7 +35,7 @@ export HOME='$home'
 export PATH='$dir/bin:$dir/sys'
 export P3STACK_REPO_URL='$origin'
 export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache'
-unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE
+unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON
 EOF
 }
 
@@ -129,12 +131,30 @@ case $scenario in
     change p3stack/skills/poteto-mode/SKILL.md
     rm -rf "$home/.p3stack/installed"
     ;;
+  interrupted) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  added)
+    for root in "$home/.codex/plugins/cache/p3stack/p3stack/1.0.0" "$home/.cursor/plugins/local/p3stack"; do
+      mkdir -p "$root/skills/poteto-mode/references"
+      echo "My own reference." >"$root/skills/poteto-mode/references/mine.md"
+    done
+    ;;
+  removed-file)
+    echo "My edited notes." >>"$(installed claude skills/recall/references/notes.md)"
+    echo "echo my-hook" >>"$(installed claude hooks/session-start)"
+    git rm --quiet p3stack/skills/recall/references/notes.md p3stack/hooks/session-start
+    ;;
+  auto-updated) edit claude skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  stale-plugin) change p3stack/skills/poteto-mode/SKILL.md ;;
   script) edit claude skills/poteto-mode/scripts/watch-pr/github.ts 0; change p3stack/skills/poteto-mode/scripts/watch-pr/github.ts ;;
 esac
 [[ $scenario == first ]] || change team-kit/skills/deslop/SKILL.md
 git commit --quiet -am "Release 2"
 git push --quiet "$origin" main
 git rev-parse HEAD~1 HEAD >"$dir/releases"
+
+if [[ $scenario == auto-updated || $scenario == stale-plugin ]]; then
+  (eval "$(environment)"; claude plugin update p3stack@p3stack)
+fi
 
 environment
 echo "# Run: bash '$installer' update"
