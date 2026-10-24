@@ -65,13 +65,13 @@ claude() {
   case "$*" in
     "plugin marketplace "*) [[ $3 != list ]] || echo p3stack ;;
     "plugin install "*) grep -q "^${3%@*}	" "$claude_state" 2>/dev/null || claude_put "$3" ;;
-    "plugin update "*) claude_put "$3";
+    "plugin update "*) [[ ${P3STACK_FAKE_SKIP_UPDATE:-} == "${3%@*}" ]] || claude_put "$3";
       if [[ -n ${P3STACK_FAKE_REMOVE_AFTER_UPDATE:-} && $3 == p3stack@p3stack ]]; then
         rm -rf "$claude_plugins/cache/p3stack/p3stack/$(git --git-dir="$origin" rev-parse HEAD | cut -c1-12)/$P3STACK_FAKE_REMOVE_AFTER_UPDATE"
       fi; [[ ${P3STACK_FAKE_FAIL_AFTER_UPDATE:-} != claude || $3 != p3stack-team-kit@p3stack ]] ;;
     "plugin uninstall "*) grep -v "^${3%@*}	" "$claude_state" >"$claude_state.new" || true; mv "$claude_state.new" "$claude_state" ;;
     "plugin list --json") claude_list_json ;;
-    "plugin list") cut -f1 "$claude_state" 2>/dev/null | sed 's/$/@p3stack/' ;;
+    "plugin list") [[ ! -f $claude_state ]] || cut -f1 "$claude_state" | sed 's/$/@p3stack/' ;;
     "plugin "*) unsupported "$@" ;;
     *) act_as_merge_agent "$@" ;;
   esac

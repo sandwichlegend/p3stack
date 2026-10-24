@@ -33,7 +33,7 @@ update_answering() {
   (
     eval "$(cat "$dir.env")"
     export P3STACK_TTY=$dir/answers "$@"
-    bash "$installer" update
+    bash "$installer" ${action:-update} ${tools:-}
   ) >"$dir/out" 2>&1 || { [[ ${expect_failure:-0} == 1 ]] || fail "install.sh update exited nonzero"; return; }
   [[ ${expect_failure:-0} != 1 ]] || fail "update succeeded when it should stop"
 }
@@ -49,7 +49,13 @@ is_release() { cmp -s <(release "$1" "$3") "$2" || fail "$2 isn't release ${1:0:
 exists() { [[ -e $1 || -L $1 ]] || fail "$1 is missing"; }
 absent() { [[ ! -e $1 && ! -L $1 ]] || fail "$1 exists"; }
 asked() { [[ $(grep -c 'Choose ' "$dir/out" || true) == "$1" ]] || fail "asked $(grep -c 'Choose ' "$dir/out" || true) questions, not $1"; }
-recorded() { [[ $(cat "$home/.p3stack/installed/$1/commit") == "$new" ]] || fail "$1's record isn't release ${new:0:7}"; }
+record_is() {
+  local plugin
+  for plugin in p3stack p3stack-team-kit; do
+    [[ $(cat "$home/.p3stack/installed/$1/$plugin.commit" 2>/dev/null) == "$2" ]] || fail "$1's $plugin record isn't release ${2:0:7}"
+  done
+}
+recorded() { record_is "$1" "$new"; }
 
 test_clean() {
   setup clean clean
@@ -191,11 +197,10 @@ test_removed_keep() {
   says "recall in Claude Code: you edited this skill, and the new release no longer has it."
   says "[A] Accept p3stack's version (recommended)"
   never_says "Talk to a model"
-  says "Moved your recall to ~/.agents/skills/recall and linked it into each tool."
+  says "Moved your recall to ~/.agents/skills/recall, where Claude Code, Codex and OpenCode load it. p3stack won't update it any more."
   has "$home/.agents/skills/recall/SKILL.md" "Write the code test first."
   exists "$home/.agents/skills/recall/references/notes.md"
-  [[ $(readlink "$home/.claude/skills/recall") == ../../.agents/skills/recall ]] || fail "~/.claude/skills/recall isn't linked"
-  [[ $(readlink "$home/.cursor/skills/recall") == ../../.agents/skills/recall ]] || fail "~/.cursor/skills/recall isn't linked"
+  [[ $(readlink "$home/.claude/skills/recall") == "$home/.agents/skills/recall" ]] || fail "~/.claude/skills/recall isn't linked"
   absent "$claude/skills/recall"
 }
 
@@ -283,9 +288,10 @@ test_backups_must_succeed_before_install() {
   setup backups-must-succeed both
   echo blocked >"$home/.p3stack/edits"
   expect_failure=1 update_answering "a\n"
-  is_release "$old" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+  recorded codex
+  absent "$claude"
   has "$claude_old/skills/poteto-mode/SKILL.md" "Write the code test first."
-  [[ $(cat "$home/.p3stack/installed/claude/commit") == "$old" ]] || fail "record changed after backup failure"
+  record_is claude "$old"
   says "backup"
   never_says "Your version is saved"
 }
@@ -293,9 +299,10 @@ test_backups_must_succeed_before_install() {
 test_interrupted_update_recovers_edits() {
   setup interrupted-update interrupted
   expect_failure=1 update_answering "k\n" P3STACK_FAKE_FAIL_AFTER_UPDATE=codex
+  has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
+  says "Your files in Codex are as they were before this update."
   update_answering "k\n"
   has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
-  says "Finished an interrupted update"
   recorded codex
   has "$home/.p3stack/installed/codex/bases" "$old"
   absent "$home/.p3stack/pending/codex"
@@ -313,7 +320,10 @@ test_backups_are_immutable_generations() {
   same "$first" "$dir/first-backup"
   [[ $(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l) == 2 ]] || fail "expected two backup generations"
   update_answering ""
-  [[ $(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l) == 2 ]] || fail "unchanged backup was duplicated"
+  local count
+  count=$(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l)
+  update_answering ""
+  [[ $(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l) == "$count" ]] || fail "unchanged backup was duplicated"
 }
 
 test_merges_get_their_own_folder() {
@@ -368,8 +378,6 @@ test_kept_conflict_keeps_old_base() {
 test_stale_plugin_copies_are_not_edits() {
   setup stale-plugin stale-plugin
   update_answering ""
-  git --git-dir="$dir/origin.git" archive "$old" team-kit | tar -x -C "$home/.claude/plugins/cache/p3stack/p3stack-team-kit/${new:0:12}" --strip-components=1
-  update_answering ""
   asked 0
   never_says "Marked it edited"
   never_says "Kept your version"
@@ -382,9 +390,9 @@ test_no_silent_unguarded_update() {
   has "$claude/skills/poteto-mode/SKILL.md" "Write the code test first."
   setup root-unresolved kept
   expect_failure=1 update_answering "" P3STACK_FAKE_JSON='[]'
-  [[ $(cat "$home/.p3stack/installed/claude/commit") == "$old" ]] || fail "record changed without scan"
+  record_is claude "$old"
   absent "$claude"
-  says "couldn't resolve"
+  says "couldn't find where Claude Code keeps p3stack"
 }
 
 test_cursor_has_known_base() {
@@ -409,14 +417,15 @@ test_only_one_update_runs_at_a_time() {
   absent "$home/.p3stack/lock"
 }
 
-test_personal_skill_collision_reports_accept() {
+test_personal_skill_collision_keeps_skill_in_place() {
   setup personal-collision removed
   mkdir -p "$home/.agents/skills/recall"
   echo "My personal skill" >"$home/.agents/skills/recall/SKILL.md"
   update_answering "" P3STACK_NONINTERACTIVE=1
-  never_says "was kept in"
+  never_says "was kept in ~/.agents"
   has "$home/.agents/skills/recall/SKILL.md" "My personal skill"
   says "already exists"
+  has "$claude/skills/recall/SKILL.md" "Write the code test first."
   setup accept-parent both
   rm "$claude_old/skills/swarm/SKILL.md"
   update_answering "a\n" P3STACK_FAKE_REMOVE_AFTER_UPDATE=skills/poteto-mode
@@ -459,7 +468,7 @@ EOF
   expect_failure=1 update_answering "a\n"
   says "backup verification failed"
   absent "$claude"
-  [[ $(cat "$home/.p3stack/installed/claude/commit") == "$old" ]] || fail "record changed after corrupt backup"
+  record_is claude "$old"
 }
 
 test_auto_updated_folder_missing_warns_once() {
@@ -495,6 +504,321 @@ test_incomplete_lock_is_recovered() {
   update_answering "a\n"
   recorded claude
   absent "$home/.p3stack/lock"
+}
+
+stop_at_record_write() {
+  local real_cp
+  real_cp=$(command -v cp)
+  cat >"$dir/bin/cp" <<EOF
+#!/usr/bin/env bash
+case "\$*" in */.p3stack/installed/*) kill -TERM \$PPID; exit 1 ;; esac
+exec "$real_cp" "\$@"
+EOF
+  chmod +x "$dir/bin/cp"
+}
+
+push_release() {
+  local work=$dir/release-work
+  rm -rf "$work"
+  git clone --quiet "$dir/origin.git" "$work"
+  "$@" "$work"
+  git -C "$work" -c user.name=fixture -c user.email=fixture@example.com commit --quiet -am "Next release"
+  git -C "$work" push --quiet origin main
+  git -C "$work" rev-parse HEAD
+}
+
+change_deslop_again() { echo "Check the diff twice." >>"$1/team-kit/skills/deslop/SKILL.md"; }
+
+test_edit_after_failed_update_survives() {
+  setup edit-after-failure interrupted
+  expect_failure=1 update_answering "k\n" P3STACK_FAKE_FAIL_AFTER_UPDATE=codex
+  has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
+  echo "EDIT_AFTER_FAILURE" >>"$codex/skills/poteto-mode/SKILL.md"
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$codex/skills/poteto-mode/SKILL.md" "EDIT_AFTER_FAILURE"
+  has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
+  [[ -n $(grep -rl EDIT_AFTER_FAILURE "$home/.p3stack/edits/codex") ]] || fail "EDIT_AFTER_FAILURE has no backup"
+}
+
+test_replay_never_overwrites_newer_edits() {
+  setup replay-accept both
+  stop_at_record_write
+  expect_failure=1 update_answering "a\n"
+  rm "$dir/bin/cp"
+  exists "$home/.p3stack/pending/claude"
+  echo "LATE_EDIT" >>"$claude/skills/poteto-mode/SKILL.md"
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  says "Finished an interrupted update in Claude Code."
+  has "$claude/skills/poteto-mode/SKILL.md" "LATE_EDIT"
+  [[ -n $(grep -rl LATE_EDIT "$home/.p3stack/edits/claude") ]] || fail "LATE_EDIT has no backup"
+  recorded claude
+  setup replay-keep interrupted
+  stop_at_record_write
+  expect_failure=1 update_answering "k\n"
+  rm "$dir/bin/cp"
+  echo "LATE_EDIT" >>"$codex/skills/poteto-mode/SKILL.md"
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$codex/skills/poteto-mode/SKILL.md" "LATE_EDIT"
+  has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
+  [[ -n $(grep -rl LATE_EDIT "$home/.p3stack/edits/codex") ]] || fail "LATE_EDIT has no backup"
+}
+
+test_dead_journal_does_not_block_updates() {
+  setup dead-journal kept
+  mkdir -p "$home/.p3stack/pending/bogus" "$home/.p3stack/pending/cursor/sources"
+  echo "x" >"$home/.p3stack/pending/bogus/rows"
+  printf 'cursor\034p3stack\034skills/x/SKILL.md\034edited-kept\034keep\n' >"$home/.p3stack/pending/cursor/rows"
+  echo "Merged text that only the journal has." >"$home/.p3stack/pending/cursor/sources/0"
+  update_answering ""
+  says "pending-failed"
+  says "Kept your version of poteto-mode."
+  recorded claude
+  absent "$home/.p3stack/pending/cursor"
+  absent "$home/.p3stack/pending/bogus"
+  [[ -n $(grep -rl "Merged text that only the journal has." "$home/.p3stack/edits") ]] || fail "journal-only merge result wasn't backed up"
+  update_answering ""
+  never_says "pending"
+}
+
+test_missing_root_journal_finishes_after_rebuild() {
+  setup missing-root added
+  local real_cp
+  real_cp=$(command -v cp)
+  cat >"$dir/bin/cp" <<EOF
+#!/usr/bin/env bash
+case "\$*" in *'/.p3stack/repo/p3stack '*) echo injected copy failure >&2; exit 1 ;; esac
+exec "$real_cp" "\$@"
+EOF
+  chmod +x "$dir/bin/cp"
+  expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  rm "$dir/bin/cp"
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$home/.cursor/plugins/local/p3stack/skills/poteto-mode/references/mine.md" "My own reference."
+  has "$codex/skills/poteto-mode/references/mine.md" "My own reference."
+  absent "$home/.p3stack/pending/cursor"
+  recorded cursor
+}
+
+test_uninstall_drops_journal_and_names_backups() {
+  setup uninstall-journal interrupted
+  stop_at_record_write
+  expect_failure=1 update_answering "k\n"
+  rm "$dir/bin/cp"
+  exists "$home/.p3stack/pending/codex"
+  action=uninstall update_answering ""
+  absent "$home/.p3stack/pending/codex"
+  says "~/.p3stack/edits/codex/"
+}
+
+test_merge_results_survive_a_dropped_journal() {
+  setup merge-dropped both
+  expect_failure=1 update_answering "t\n1\nn\n" P3STACK_FAKE_MERGE="merged by the agent" P3STACK_FAKE_FAIL_AFTER_UPDATE=claude
+  [[ -n $(grep -rl "merged by the agent" "$home/.p3stack/edits/claude") ]] || fail "merged result wasn't saved with the backups"
+  absent "$home/.p3stack/pending/claude"
+  record_is claude "$old"
+}
+
+test_record_matches_what_the_tool_installed() {
+  setup partial-record kept
+  update_answering "" P3STACK_FAKE_SKIP_UPDATE=p3stack-team-kit
+  [[ $(cat "$home/.p3stack/installed/claude/p3stack.commit") == "$new" ]] || fail "p3stack record isn't the new release"
+  [[ $(cat "$home/.p3stack/installed/claude/p3stack-team-kit.commit") == "$old" ]] || fail "team-kit record isn't the release Claude Code kept"
+  update_answering "" P3STACK_FAKE_SKIP_UPDATE=p3stack-team-kit
+  never_says "deslop"
+}
+
+test_failed_update_keeps_old_record() {
+  setup failed-record interrupted
+  expect_failure=1 update_answering "k\n" P3STACK_FAKE_FAIL_AFTER_UPDATE=codex
+  record_is codex "$old"
+  expect_failure=1 update_answering "k\n" P3STACK_FAKE_FAIL_AFTER_UPDATE=codex
+  record_is codex "$old"
+  has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
+}
+
+test_install_on_installed_tool_updates_it() {
+  setup install-updates both
+  action=install update_answering "a\n"
+  is_release "$new" "$claude/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+  has "$claude_old/skills/poteto-mode/SKILL.md" "Write the code test first."
+  cmp -s <(git --git-dir="$dir/origin.git" show "$new:team-kit/skills/deslop/SKILL.md") "$home/.codex/plugins/cache/p3stack/p3stack-team-kit/1.0.0/skills/deslop/SKILL.md" || fail "Codex's team-kit wasn't updated by install"
+  recorded claude
+  recorded codex
+}
+
+test_present_tool_without_p3stack_is_installed() {
+  setup without-p3stack kept
+  mkdir -p "$home/.cursor"
+  update_answering ""
+  never_says "Using the commit Cursor installed"
+  says "Kept your version of poteto-mode."
+  recorded claude
+  exists "$home/.cursor/plugins/local/p3stack/skills/poteto-mode/SKILL.md"
+  recorded cursor
+}
+
+test_unresolved_root_stops_only_that_tool() {
+  setup unresolved-one copy
+  expect_failure=1 update_answering "" P3STACK_FAKE_JSON='[]'
+  record_is claude "$old"
+  recorded codex
+  says "couldn't find where Claude Code keeps"
+}
+
+test_team_kit_only_auto_update_keeps_old_edit() {
+  setup team-kit-auto clean
+  local deslop=skills/deslop/SKILL.md team=$home/.claude/plugins/cache/p3stack/p3stack-team-kit
+  echo "TEAMKIT_OLD_EDIT" >>"$team/${old:0:12}/$deslop"
+  (eval "$(cat "$dir.env")"; claude plugin update p3stack-team-kit@p3stack)
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$team/${new:0:12}/$deslop" "TEAMKIT_OLD_EDIT"
+  has "$(backup_for claude "$deslop")" "TEAMKIT_OLD_EDIT"
+}
+
+test_active_folder_edit_after_auto_update_is_kept() {
+  setup active-edit auto-updated
+  echo "NEW_ACTIVE_EDIT" >>"$claude/skills/poteto-mode/SKILL.md"
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$claude/skills/poteto-mode/SKILL.md" "NEW_ACTIVE_EDIT"
+  says "your newer version of poteto-mode in Claude Code was kept"
+  [[ -n $(grep -rl NEW_ACTIVE_EDIT "$home/.p3stack/edits/claude") ]] || fail "active edit has no backup"
+  [[ -n $(grep -rl "Write the code test first." "$home/.p3stack/edits/claude") ]] || fail "older edit has no backup"
+}
+
+test_two_versions_ask_which_to_keep() {
+  setup two-versions auto-updated
+  echo "NEW_ACTIVE_EDIT" >>"$claude/skills/poteto-mode/SKILL.md"
+  update_answering "o\nk\n"
+  asked 2
+  says "[A] Keep the active one (recommended)"
+  says "[O] Keep the older one"
+  has "$claude/skills/poteto-mode/SKILL.md" "Write the code test first."
+  lacks "$claude/skills/poteto-mode/SKILL.md" "NEW_ACTIVE_EDIT"
+  [[ -n $(grep -rl NEW_ACTIVE_EDIT "$home/.p3stack/edits/claude") ]] || fail "active edit has no backup"
+}
+
+test_opencode_auto_update_scans_both_folders() {
+  setup opencode-both clean
+  local package=$home/.cache/opencode/npm/git-p3stack-0123456789ab skill=node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md
+  echo "OLD_OPENCODE_EDIT" >>"$package/0000000000001/$skill"
+  (eval "$(cat "$dir.env")"; opencode plugin update github:sandwichlegend/p3stack)
+  echo "ACTIVE_OPENCODE_EDIT" >>"$package/0000000000002/$skill"
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$package/0000000000003/$skill" "ACTIVE_OPENCODE_EDIT"
+  [[ -n $(grep -rl OLD_OPENCODE_EDIT "$home/.p3stack/edits/opencode") ]] || fail "older OpenCode edit has no backup"
+}
+
+test_deliberate_revert_is_an_edit() {
+  setup revert kept
+  update_answering ""
+  local team=$home/.claude/plugins/cache/p3stack/p3stack-team-kit next
+  git --git-dir="$dir/origin.git" show "$old:team-kit/skills/deslop/SKILL.md" >"$team/${new:0:12}/skills/deslop/SKILL.md"
+  next=$(push_release change_deslop_again)
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  says "your version of deslop in Claude Code was kept"
+  has "$team/${next:0:12}/skills/deslop/SKILL.md" "Pause before deploys."
+  lacks "$team/${next:0:12}/skills/deslop/SKILL.md" "Pause before force-pushes."
+  lacks "$team/${next:0:12}/skills/deslop/SKILL.md" "Check the diff twice."
+}
+
+test_hand_updated_tool_is_lag_not_edit() {
+  setup hand-updated clean
+  (eval "$(cat "$dir.env")"; codex plugin marketplace upgrade p3stack; codex plugin add p3stack-team-kit@p3stack) >/dev/null
+  local next
+  next=$(push_release change_deslop_again)
+  update_answering ""
+  asked 0
+  never_says "Kept your version of deslop"
+  cmp -s <(git --git-dir="$dir/origin.git" show "$next:team-kit/skills/deslop/SKILL.md") "$home/.codex/plugins/cache/p3stack/p3stack-team-kit/1.0.0/skills/deslop/SKILL.md" || fail "Codex's deslop isn't the newest release"
+}
+
+test_kept_removed_file_stops_asking() {
+  setup removed-file-kept removed-file
+  update_answering "k\nk\n"
+  says "you won't be asked about it again"
+  update_answering ""
+  asked 0
+  has "$claude/skills/recall/references/notes.md" "My edited notes."
+  has "$claude/hooks/session-start" "echo my-hook"
+}
+
+test_kept_removed_skill_reaches_every_tool() {
+  setup removed-everywhere removed
+  update_answering "k\n"
+  has "$home/.agents/skills/recall/SKILL.md" "Write the code test first."
+  [[ $(cd "$home/.claude/skills/recall" && pwd -P) == "$(cd "$home/.agents/skills/recall" && pwd -P)" ]] || fail "~/.claude/skills/recall doesn't lead to ~/.agents/skills/recall"
+  says "where Claude Code, Codex and OpenCode load it"
+  absent "$claude/skills/recall"
+  absent "$codex/skills/recall"
+  setup removed-hidden removed
+  mkdir -p "$home/.claude/skills/recall"
+  echo "Another recall" >"$home/.claude/skills/recall/SKILL.md"
+  update_answering "k\n"
+  says "where Codex and OpenCode load it"
+  has "$claude/skills/recall/SKILL.md" "Write the code test first."
+  exists "$claude/skills/recall/references/notes.md"
+  has "$home/.claude/skills/recall/SKILL.md" "Another recall"
+  update_answering ""
+  asked 0
+  exists "$claude/skills/recall/SKILL.md"
+}
+
+test_unsafe_file_stops_only_that_tool() {
+  setup unsafe-file copy
+  ln -s /dev/null "$claude_old/skills/poteto-mode/link.md"
+  expect_failure=1 update_answering ""
+  says "skills/poteto-mode/link.md"
+  says "Move the link out"
+  record_is claude "$old"
+  recorded codex
+}
+
+test_lock_names_path_and_reclaims_reused_pid() {
+  setup lock-identity both
+  sleep 300 &
+  local sleeper=$!
+  mkdir "$home/.p3stack/lock"
+  echo "$sleeper" >"$home/.p3stack/lock/pid"
+  ps -o args= -p "$sleeper" >"$home/.p3stack/lock/command" 2>/dev/null || ps -o pid,args | awk -v pid="$sleeper" '$1 == pid { sub(/^ *[0-9]+ +/, ""); print }' >"$home/.p3stack/lock/command"
+  expect_failure=1 update_answering "a\n"
+  says "delete ~/.p3stack/lock"
+  echo "bash install.sh update" >"$home/.p3stack/lock/command"
+  update_answering "a\n"
+  recorded claude
+  absent "$home/.p3stack/lock"
+  mkdir -p "$home/.p3stack/lock"
+  echo "$sleeper" >"$home/.p3stack/lock/pid"
+  ps -o args= -p "$sleeper" >"$home/.p3stack/lock/command" 2>/dev/null || ps -o pid,args | awk -v pid="$sleeper" '$1 == pid { sub(/^ *[0-9]+ +/, ""); print }' >"$home/.p3stack/lock/command"
+  touch -t 200001010000 "$home/.p3stack/lock"
+  update_answering ""
+  absent "$home/.p3stack/lock"
+  kill "$sleeper" 2>/dev/null || true
+}
+
+test_backup_dedupe_compares_raw_bytes_and_mode() {
+  setup raw-dedupe kept
+  local file=$claude/skills/poteto-mode/SKILL.md
+  update_answering ""
+  sed 's/$/\r/' "$file" >"$dir/crlf" && cp "$dir/crlf" "$file"
+  update_answering ""
+  local found=0 backup
+  while IFS= read -r backup; do cmp -s "$backup" "$dir/crlf" && found=1; done < <(find "$home/.p3stack/edits/claude" -type f -name SKILL.md)
+  ((found)) || fail "no backup holds the CRLF bytes"
+  chmod +x "$file"
+  update_answering ""
+  [[ -n $(find "$home/.p3stack/edits/claude" -type f -name SKILL.md -perm -u+x) ]] || fail "no backup keeps the executable mode"
+}
+
+test_merge_folder_keeps_one_previous_result() {
+  setup merge-archive both
+  local merge=$home/.p3stack/merge/claude/p3stack/skills/poteto-mode/SKILL.md
+  mkdir -p "$merge"
+  echo "last result" >"$merge/result.md"
+  echo "older archive" >"$merge/result.md.20260101T000000Z-abc1234-x"
+  echo "stale" >"$merge/stale.md"
+  update_answering "t\n1\nn\n" P3STACK_FAKE_MERGE="merged by the agent"
+  [[ $(cd "$merge" && ls | LC_ALL=C sort | paste -sd' ' -) == "BRIEF.md original.md result.md result.previous.md theirs.md yours.md" ]] || fail "merge folder holds $(cd "$merge" && ls | paste -sd' ' -)"
+  has "$merge/result.previous.md" "last result"
 }
 
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
