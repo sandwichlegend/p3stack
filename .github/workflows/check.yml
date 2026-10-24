@@ -21,6 +21,7 @@ jobs:
         with:
           node-version: 24
       - run: node --test p3stack/skills/*/scripts/test/*.test.mjs
+      - run: scripts/test-update/test.sh
       - uses: oven-sh/setup-bun@v2
       - working-directory: p3stack/skills/poteto-mode/scripts
         run: |

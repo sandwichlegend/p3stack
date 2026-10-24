@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+scenarios="clean kept copy both hand nobody removed first script"
+scenario=${1:-}
+[[ " $scenarios " == *" $scenario "* && -n ${2:-} ]] || { echo "usage: fixtures.sh <$(tr ' ' '|' <<<"$scenarios")> <dir>" >&2; exit 2; }
+
+here=$(cd "$(dirname "$0")" && pwd)
+installer=$(cd "$here/../.." && pwd)/install.sh
+mkdir -p "$2"
+dir=$(cd "$2" && pwd)
+home=$dir/home
+release=$dir/release
+origin=$dir/origin.git
+rm -rf "$home" "$release" "$origin" "$dir/bin" "$dir/sys"
+mkdir -p "$home" "$dir/bin" "$dir/sys"
+
+for command in bash env git tar awk sed grep sha256sum shasum find sort diff cp mv rm mkdir cat ln ls head tail tr cut \
+  dirname basename mktemp touch chmod wc uname paste readlink sleep date python3 xcode-select; do
+  path=$(command -v "$command" 2>/dev/null) && ln -s "$path" "$dir/sys/$command"
+done
+
+case $scenario in
+  clean) tools="claude codex cursor-agent opencode" ;;
+  copy|both|nobody|first) tools="claude codex" ;;
+  *) tools="claude" ;;
+esac
+for tool in $tools; do ln -s "$here/fake-tool" "$dir/bin/$tool"; done
+
+environment() {
+  cat <<EOF
+export HOME='$home'
+export PATH='$dir/bin:$dir/sys'
+export P3STACK_REPO_URL='$origin'
+export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache'
+unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE
+EOF
+}
+
+skill() {
+  mkdir -p "$release/$1"
+  cat >"$release/$1/SKILL.md" <<EOF
+---
+name: ${1##*/}
+description: The ${1##*/} fixture skill.
+---
+
+# ${1##*/}
+
+## Workflow
+
+Plan the work.
+Write the code.
+Check the result.
+
+## Autonomy
+
+Proceed on reversible work.
+Pause before deploys.
+EOF
+}
+
+mkdir -p "$release/p3stack/hooks" "$release/p3stack/skills/poteto-mode/scripts/watch-pr" "$release/p3stack/skills/recall/references"
+skill p3stack/skills/poteto-mode
+skill p3stack/skills/swarm
+skill p3stack/skills/recall
+skill team-kit/skills/deslop
+echo "Notes the recall skill reads." >"$release/p3stack/skills/recall/references/notes.md"
+echo '{ "name": "p3stack" }' >"$release/p3stack/plugin.json"
+echo '{ "name": "p3stack-team-kit" }' >"$release/team-kit/plugin.json"
+printf '#!/usr/bin/env bash\necho "Use poteto-mode."\n' >"$release/p3stack/hooks/session-start"
+chmod +x "$release/p3stack/hooks/session-start"
+cat >"$release/p3stack/skills/poteto-mode/scripts/watch-pr/github.ts" <<'EOF'
+export function listChecks(pr: number) {
+  return [`checks for ${pr}`]
+}
+
+export function discoverStack(branch: string) {
+  return [branch]
+}
+EOF
+
+git() { command git -C "$release" -c user.name=fixture -c user.email=fixture@example.com "$@"; }
+git init --quiet --initial-branch=main
+git add -A
+git commit --quiet -m "Release 1"
+command git init --quiet --bare --initial-branch=main "$origin"
+git push --quiet "$origin" main
+
+(
+  eval "$(environment)"
+  P3STACK_NONINTERACTIVE=1 bash "$installer" install
+) >"$dir/setup.log" 2>&1 || { cat "$dir/setup.log" >&2; exit 1; }
+
+installed() {
+  local tool=$1 path=$2
+  case $tool in
+    claude) echo "$home/.claude/plugins/cache/p3stack/p3stack/$(git rev-parse HEAD | cut -c1-12)/$path" ;;
+    codex) echo "$home/.codex/plugins/cache/p3stack/p3stack/1.0.0/$path" ;;
+  esac
+}
+
+edit() {
+  local file mark=$3
+  file=$(installed "$1" "$2")
+  awk -v mark="$mark" '
+    NR > 1 && $0 == "---" && mark && !done { print "edited: true"; done = 1 }
+    $0 == "Write the code." { print "Write the code test first." ; next }
+    $0 == "  return [branch]" { print "  return [branch, \"main\"]"; next }
+    { print }' "$file" >"$file.new"
+  mv "$file.new" "$file"
+}
+
+change() {
+  awk '$0 == "Pause before deploys." { print; print "Pause before force-pushes."; print "Pause before deleting data."; next }
+    $0 == "export function discoverStack(branch: string) {" { print; print "  if (!branch) return []"; next }
+    { print }' "$release/$1" >"$release/$1.new"
+  mv "$release/$1.new" "$release/$1"
+}
+
+case $scenario in
+  kept|copy) edit claude skills/poteto-mode/SKILL.md 1 ;;
+  both|nobody) edit claude skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  hand) edit claude skills/swarm/SKILL.md 0 ;;
+  removed) edit claude skills/recall/SKILL.md 1; git rm --quiet -r p3stack/skills/recall ;;
+  first)
+    edit claude skills/swarm/SKILL.md 1
+    edit codex skills/swarm/SKILL.md 0
+    change p3stack/skills/poteto-mode/SKILL.md
+    rm -rf "$home/.p3stack/installed"
+    ;;
+  script) edit claude skills/poteto-mode/scripts/watch-pr/github.ts 0; change p3stack/skills/poteto-mode/scripts/watch-pr/github.ts ;;
+esac
+[[ $scenario == first ]] || change team-kit/skills/deslop/SKILL.md
+git commit --quiet -am "Release 2"
+git push --quiet "$origin" main
+git rev-parse HEAD~1 HEAD >"$dir/releases"
+
+environment
+echo "# Run: bash '$installer' update"

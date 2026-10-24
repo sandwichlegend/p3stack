@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tool=$(basename "$0")
+origin=$P3STACK_REPO_URL
+
+subtree() {
+  case $1 in
+    p3stack) echo p3stack ;;
+    p3stack-team-kit) echo team-kit ;;
+  esac
+}
+
+export_tree() {
+  local commit=$1 path=$2 dest=$3
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  git --git-dir="$origin" archive "$commit" $path | tar -x -C "$dest" ${path:+--strip-components=1}
+}
+
+unsupported() {
+  echo "fake $tool doesn't support: $*" >&2
+  exit 1
+}
+
+act_as_merge_agent() {
+  printf '%s in %s: %s\n' "$tool" "$PWD" "$*" >>"$HOME/agent.log"
+  [[ -n ${P3STACK_FAKE_MERGE:-} ]] || exit 0
+  local yours
+  yours=$(ls yours*)
+  printf '%s\n' "$P3STACK_FAKE_MERGE" >"result${yours#yours}"
+}
+
+claude_plugins=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins
+claude_state=$claude_plugins/installed.tsv
+
+claude_list_json() {
+  local plugin path version first=1
+  printf '[\n'
+  while IFS=$'\t' read -r plugin path version; do
+    ((first)) || printf ',\n'
+    first=0
+    printf '  {\n    "id": "%s@p3stack",\n    "version": "%s",\n    "scope": "user",\n    "installPath": "%s"\n  }' "$plugin" "$version" "$path"
+  done < <(cat "$claude_state" 2>/dev/null)
+  printf '\n]\n'
+}
+
+claude_put() {
+  local plugin=${1%@*} sha version dest
+  sha=$(git --git-dir="$origin" rev-parse HEAD)
+  version=${sha:0:12}
+  dest=$claude_plugins/cache/p3stack/$plugin/$version
+  [[ -d $dest ]] || export_tree "$sha" "$(subtree "$plugin")" "$dest"
+  mkdir -p "$claude_plugins"
+  { grep -v "^$plugin	" "$claude_state" 2>/dev/null || true; printf '%s\t%s\t%s\n' "$plugin" "$dest" "$version"; } >"$claude_state.new"
+  mv "$claude_state.new" "$claude_state"
+}
+
+claude() {
+  case "$*" in
+    "plugin marketplace "*) [[ $3 != list ]] || echo p3stack ;;
+    "plugin install "*) grep -q "^${3%@*}	" "$claude_state" 2>/dev/null || claude_put "$3" ;;
+    "plugin update "*) claude_put "$3" ;;
+    "plugin uninstall "*) grep -v "^${3%@*}	" "$claude_state" >"$claude_state.new" || true; mv "$claude_state.new" "$claude_state" ;;
+    "plugin list --json") claude_list_json ;;
+    "plugin list") cut -f1 "$claude_state" 2>/dev/null | sed 's/$/@p3stack/' ;;
+    "plugin "*) unsupported "$@" ;;
+    *) act_as_merge_agent "$@" ;;
+  esac
+}
+
+codex_home=${CODEX_HOME:-$HOME/.codex}
+codex_market=$codex_home/.tmp/marketplaces/p3stack
+
+codex() {
+  case "$*" in
+    "plugin marketplace add "*) [[ -d $codex_market ]] || git clone --quiet "$origin" "$codex_market" ;;
+    "plugin marketplace upgrade "*) git -C "$codex_market" pull --quiet --ff-only ;;
+    "plugin marketplace list") printf 'MARKETPLACE  ROOT\n'; [[ ! -d $codex_market ]] || printf 'p3stack      %s\n' "$codex_market" ;;
+    "plugin marketplace remove "*) rm -rf "$codex_market" ;;
+    "plugin add "*) export_tree "$(git -C "$codex_market" rev-parse HEAD)" "$(subtree "${3%@*}")" "$codex_home/plugins/cache/p3stack/${3%@*}/1.0.0" ;;
+    "plugin remove "*) rm -rf "$codex_home/plugins/cache/p3stack/${3%@*}" ;;
+    "plugin "*) unsupported "$@" ;;
+    *) act_as_merge_agent "$@" ;;
+  esac
+}
+
+opencode_cache=${XDG_CACHE_HOME:-$HOME/.cache}/opencode/npm/git-p3stack-0123456789ab
+
+opencode_put() {
+  local sha stamp dir
+  sha=$(git --git-dir="$origin" rev-parse HEAD)
+  mkdir -p "$opencode_cache"
+  stamp=$(printf '%013d' $(($(ls "$opencode_cache" | wc -l) + 1)))
+  dir=$opencode_cache/$stamp/node_modules
+  export_tree "$sha" "" "$dir/p3stack"
+  printf '{\n  "packages": {\n    "node_modules/p3stack": {\n      "resolved": "git+ssh://git@github.com/sandwichlegend/p3stack.git#%s"\n    }\n  }\n}\n' "$sha" >"$dir/.package-lock.json"
+}
+
+opencode() {
+  case "$*" in
+    --version) echo v2.1.3 ;;
+    "plugin add "*) [[ -d $opencode_cache ]] || opencode_put ;;
+    "plugin update "*) opencode_put ;;
+    "plugin remove "*) rm -rf "$opencode_cache" ;;
+    "plugin "*) unsupported "$@" ;;
+    *) act_as_merge_agent "$@" ;;
+  esac
+}
+
+case $tool in
+  claude|codex|opencode) "$tool" "$@" ;;
+  *) act_as_merge_agent "$@" ;;
+esac
