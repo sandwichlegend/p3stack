@@ -8,7 +8,7 @@ const exec = promisify(execFile)
 const repo = fileURLToPath(new URL("../../../", import.meta.url))
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`
 
-const utilities = `bash sh env git tar awk sed grep sha256sum shasum find sort diff cp mv rm mkdir cat ln ls head tail tr cut
+const utilities = `bash sh env git tar awk sed grep sha256sum shasum find sort diff cp mv rm mkdir rmdir cat ln ls head tail tr cut
   dirname basename mktemp touch chmod wc uname paste readlink sleep date python3 xargs tee stat realpath du less nano vim vi more clear which file cmp printf`.split(/\s+/)
 const binaries = utilities.filter((name) => existsSync(`/usr/bin/${name}`))
 const runtimeDirs = readdirSync("/usr/lib").filter((name) => /^(python3\.\d+|git-core|locale|gconv)$/.test(name))
