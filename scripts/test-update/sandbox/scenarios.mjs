@@ -1,0 +1,16 @@
+export const scenarios = [
+  { id: "clean", description: "No local edits in any of the four tools.", try: "Run p3stack update, then press Enter to update every tool." },
+  { id: "kept", description: "Your marked skill edit has no upstream change.", try: "Update. Your edit should stay without a question." },
+  { id: "copy", description: "Claude has your edit; Codex has the original.", try: "Update, pick Y to copy, then update again." },
+  { id: "both", description: "You and the release changed the same skill.", try: "Pick K, then Y, then update again. Reset to try A or T, then agent 1." },
+  { id: "hand", description: "A skill was edited without an edited mark.", try: "Update. Check that the edit stays and gains edited: true." },
+  { id: "nobody", description: "Both sides changed, with nobody at the keyboard.", try: "Update. Noninteractive mode keeps your edit without a merge prompt.", env: "export P3STACK_NONINTERACTIVE=1" },
+  { id: "removed", description: "The release removed a skill you edited.", try: "Pick K to move it to ~/.agents/skills. Reset and try A." },
+  { id: "first", description: "Old installs have no saved installation record.", try: "Update, then pick A at the Codex question. Inspect the saved copies." },
+  { id: "interrupted", description: "A tool fails after replacing your edited skill.", try: "Update and choose K. Run unset P3STACK_FAKE_FAIL_AFTER_UPDATE, then update again to recover.", env: "export P3STACK_FAKE_FAIL_AFTER_UPDATE=codex" },
+  { id: "added", description: "You added a reference file inside Codex and Cursor.", try: "Update, then find \"$HOME\" -name mine.md to see both files kept." },
+  { id: "removed-file", description: "The release removes notes from a skill that still exists, plus an edited hook.", try: "Choose A for the hook and K for the notes. Recall should stay installed." },
+  { id: "auto-updated", description: "Claude auto-updated; your edit lives in the old folder.", try: "Update and choose K. Your old-folder edit should return to the active skill." },
+  { id: "stale-plugin", description: "One plugin updated ahead of its sibling.", try: "Update. Expect no edit question or edited mark for the lagging plugin." },
+  { id: "script", description: "You and the release changed a skill's script.", try: "Pick T, then agent 1. Inspect the merged github.ts." },
+]

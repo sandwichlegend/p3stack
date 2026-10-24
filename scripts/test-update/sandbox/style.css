@@ -1,0 +1,31 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0b1016; color: #dae4ed; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+header { min-height: 110px; padding: 20px 28px; border-bottom: 1px solid #293440; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+h1 { font-size: 28px; margin: 3px 0; letter-spacing: -.8px; }
+h2 { font-size: 15px; margin: 0; }
+p { margin: 0; }
+.eyebrow { color: #81e6c1; font-size: 12px; letter-spacing: 1.2px; }
+.badge { border: 1px solid #365247; border-radius: 20px; color: #a7dfcb; padding: 7px 12px; font-size: 12px; }
+main { display: grid; grid-template-columns: 310px minmax(0, 1fr); height: calc(100dvh - 110px); }
+nav { padding: 22px 16px; overflow: auto; border-right: 1px solid #293440; }
+nav h2 { margin: 0 8px 16px; color: #91a2b3; font-weight: 500; }
+button { font: inherit; color: inherit; cursor: pointer; background: #17212b; border: 1px solid #314150; border-radius: 8px; }
+button:focus-visible { outline: 2px solid #81e6c1; outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: wait; }
+#scenarios button { display: block; width: 100%; text-align: left; padding: 12px; margin-bottom: 9px; background: transparent; border-color: transparent; }
+#scenarios button:hover { background: #17212b; }
+#scenarios button[aria-pressed=true] { border-color: #518e7a; background: #162c29; }
+strong { display: block; color: #b2e9d8; font-size: 14px; margin-bottom: 4px; }
+#scenarios span { display: block; font-size: 13px; line-height: 1.4; }
+small { display: block; color: #91a2b3; font-size: 11px; line-height: 1.4; margin-top: 6px; }
+.workspace { display: flex; flex-direction: column; min-height: 0; padding: 22px 24px 14px; }
+.toolbar { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+#title { font-size: 20px; }
+#hint { color: #a5b5c4; font-size: 13px; line-height: 1.5; margin-top: 5px; }
+#reset { padding: 8px 18px; }
+#status { color: #8297a9; font: 11px monospace; overflow-wrap: anywhere; margin: 12px 0; min-height: 14px; }
+#status[data-error=true] { color: #ffa69d; }
+#terminal { flex: 1; min-height: 240px; padding: 12px; border: 1px solid #293440; border-radius: 10px; background: #10161d; overflow: hidden; }
+footer { font-size: 11px; line-height: 1.6; color: #8297a9; margin-top: 12px; }
+@media (max-width: 760px) { header { padding: 14px 18px; min-height: 100px; } .badge { display: none; } main { display: flex; flex-direction: column; height: auto; } nav { border-right: none; max-height: 280px; border-bottom: 1px solid #293440; } #scenarios { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .workspace { height: 75dvh; min-height: 500px; padding: 18px; } }
