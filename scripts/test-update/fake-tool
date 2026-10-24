@@ -35,11 +35,16 @@ claude_plugins=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins
 claude_state=$claude_plugins/installed.tsv
 
 claude_list_json() {
+  if [[ -n ${P3STACK_FAKE_JSON:-} && $P3STACK_FAKE_JSON != reordered ]]; then printf '%s\n' "$P3STACK_FAKE_JSON"; return; fi
   local plugin path version first=1
   printf '[\n'
   while IFS=$'\t' read -r plugin path version; do
     ((first)) || printf ',\n'
     first=0
+    if [[ ${P3STACK_FAKE_JSON:-} == reordered ]]; then
+      printf '  {"installPath":"%s","nested":{"a":1},"id":"%s@p3stack"}' "$path" "$plugin"
+      continue
+    fi
     printf '  {\n    "id": "%s@p3stack",\n    "version": "%s",\n    "scope": "user",\n    "installPath": "%s"\n  }' "$plugin" "$version" "$path"
   done < <(cat "$claude_state" 2>/dev/null)
   printf '\n]\n'
@@ -60,7 +65,10 @@ claude() {
   case "$*" in
     "plugin marketplace "*) [[ $3 != list ]] || echo p3stack ;;
     "plugin install "*) grep -q "^${3%@*}	" "$claude_state" 2>/dev/null || claude_put "$3" ;;
-    "plugin update "*) claude_put "$3" ;;
+    "plugin update "*) claude_put "$3";
+      if [[ -n ${P3STACK_FAKE_REMOVE_AFTER_UPDATE:-} && $3 == p3stack@p3stack ]]; then
+        rm -rf "$claude_plugins/cache/p3stack/p3stack/$(git --git-dir="$origin" rev-parse HEAD | cut -c1-12)/$P3STACK_FAKE_REMOVE_AFTER_UPDATE"
+      fi; [[ ${P3STACK_FAKE_FAIL_AFTER_UPDATE:-} != claude || $3 != p3stack-team-kit@p3stack ]] ;;
     "plugin uninstall "*) grep -v "^${3%@*}	" "$claude_state" >"$claude_state.new" || true; mv "$claude_state.new" "$claude_state" ;;
     "plugin list --json") claude_list_json ;;
     "plugin list") cut -f1 "$claude_state" 2>/dev/null | sed 's/$/@p3stack/' ;;
@@ -78,7 +86,7 @@ codex() {
     "plugin marketplace upgrade "*) git -C "$codex_market" pull --quiet --ff-only ;;
     "plugin marketplace list") printf 'MARKETPLACE  ROOT\n'; [[ ! -d $codex_market ]] || printf 'p3stack      %s\n' "$codex_market" ;;
     "plugin marketplace remove "*) rm -rf "$codex_market" ;;
-    "plugin add "*) export_tree "$(git -C "$codex_market" rev-parse HEAD)" "$(subtree "${3%@*}")" "$codex_home/plugins/cache/p3stack/${3%@*}/1.0.0" ;;
+    "plugin add "*) export_tree "$(git -C "$codex_market" rev-parse HEAD)" "$(subtree "${3%@*}")" "$codex_home/plugins/cache/p3stack/${3%@*}/1.0.0"; [[ ${P3STACK_FAKE_FAIL_AFTER_UPDATE:-} != codex || $3 != p3stack-team-kit@p3stack ]] ;;
     "plugin remove "*) rm -rf "$codex_home/plugins/cache/p3stack/${3%@*}" ;;
     "plugin "*) unsupported "$@" ;;
     *) act_as_merge_agent "$@" ;;
