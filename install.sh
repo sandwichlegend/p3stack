@@ -758,6 +758,23 @@ node_modules
 .git
 .DS_Store'
 
+installed_paths() {
+  local root=$1 path part ignored
+  find "$root" \( -type f -o -type l \) -print0 >"$work/disk-paths"
+  while IFS= read -r -d '' path; do
+    path=${path#"$root"/}
+    ignored=0
+    while IFS= read -r part; do
+      [[ /$path/ != *"/$part/"* ]] || ignored=1
+    done <<<"$ignored_paths"
+    ((ignored == 0)) || continue
+    if [[ $path == *$'\n'* || $path == *$'\t'* || $path == *$'\034'* || -L $root/$path ]]; then
+      warn "couldn't safely scan $root/$path; installed files were left alone"
+      return 1
+    fi
+    printf '%s\n' "$path"
+  done <"$work/disk-paths"
+}
 
 history_matches() {
   local plugin=$1 path=$2 hash=$3 commit
@@ -768,6 +785,24 @@ history_matches() {
   return 1
 }
 
+old_root() {
+  local tool=$1 plugin=$2 base=$3 dir lock
+  case $tool in
+    claude)
+      dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/$marketplace/$plugin/${base:0:12}
+      [[ -d $dir ]] && printf '%s' "$dir"
+      ;;
+    opencode)
+      for dir in "${XDG_CACHE_HOME:-$HOME/.cache}"/opencode/npm/git-p3stack-*/*/node_modules/p3stack; do
+        [[ -d $dir/$(subtree "$plugin") ]] || continue
+        lock=$(cat "$(dirname "$dir")/.package-lock.json" 2>/dev/null || true)
+        if [[ $lock == *"#$base"* ]]; then printf '%s' "$dir/$(subtree "$plugin")"; return 0; fi
+      done
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+}
 
 backup_row() {
   local i=$1 source hash candidate generation dest
@@ -811,11 +846,21 @@ edits_scan() {
   active=$("${tool}_commit" 2>/dev/null || true)
   for plugin in "${plugins[@]}"; do
     root=$("${tool}_root" "$plugin") || { warn "couldn't resolve $plugin in $(tool_label "$tool"); no scan means no install"; return 1; }
+    if [[ " $commit_named_by_install " == *" $tool "* && -n $base && -n $active && $base != "$active" ]]; then
+      if old=$(old_root "$tool" "$plugin" "$base"); then
+        root=$old
+        say "  Checking $plugin edits from before the background auto-update."
+      elif ((warned == 0)); then
+        warn "Edits made before the auto-update may be in a folder $(tool_label "$tool") removed."
+        warned=1
+      fi
+    fi
     listing=$work/base-$tool-$plugin
     : >"$listing"
     [[ $known == unknown ]] || base_hashes "$tool" "$plugin" "$base" >"$listing"
     if [[ -s $listing ]]; then plugin_base=known; else plugin_base=unknown; fi
-    pair_hashes "$listing" "$new_release/$plugin.sha256" | cut -d $'\034' -f1 >"$work/paths"
+    installed_paths "$root" >"$work/installed-paths"
+    { pair_hashes "$listing" "$new_release/$plugin.sha256" | cut -d $'\034' -f1; cat "$work/installed-paths"; } | LC_ALL=C sort -u >"$work/paths"
     while IFS= read -r path; do
       [[ -n $path ]] || continue
       path_base=$base
@@ -837,7 +882,10 @@ edits_scan() {
       else
         class=$(classify "$plugin_base" "$record" "$disk" "$new")
         if [[ $class != untouched ]] && history_matches "$plugin" "$path" "$disk"; then class=untouched; fi
-
+        if [[ $class == edited-removed ]]; then
+          skill=$(skill_of "$path" || true)
+          [[ -n $skill && ! -f $new_release/$plugin/skills/$skill/SKILL.md ]] || class=edited-file-removed
+        fi
       fi
       add_row "$tool" "$plugin" "$path" "$class" "$root" "$path_base"
     done <"$work/paths"
@@ -1112,6 +1160,18 @@ offer_copy() {
 
 edits_decide() {
   local i j tool found root count=${#row_tool[@]}
+  for ((i = 0; i < count; i++)); do
+    [[ ${row_class[i]} == edited-added ]] || continue
+    for tool in $scanned_tools; do
+      found=0
+      for ((j = 0; j < ${#row_tool[@]}; j++)); do
+        if [[ ${row_tool[j]} == "$tool" && ${row_plugin[j]} == "${row_plugin[i]}" && ${row_path[j]} == "${row_path[i]}" ]]; then found=1; break; fi
+      done
+      ((found == 0)) || continue
+      root=$("${tool}_root" "${row_plugin[i]}")
+      add_row "$tool" "${row_plugin[i]}" "${row_path[i]}" untouched "$root" added
+    done
+  done
   for ((i = 0; i < ${#row_tool[@]}; i++)); do
     if edited "$i" && [[ -z ${row_action[i]} ]]; then decide "$i"; fi
   done

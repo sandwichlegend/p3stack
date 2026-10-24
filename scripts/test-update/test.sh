@@ -329,8 +329,31 @@ test_merges_get_their_own_folder() {
   has "$claude/$path" "Write the code test first."
 }
 
+test_user_added_files_are_kept() {
+  setup added-files added
+  update_answering ""
+  has "$codex/skills/poteto-mode/references/mine.md" "My own reference."
+  has "$home/.cursor/plugins/local/p3stack/skills/poteto-mode/references/mine.md" "My own reference."
+  says "Kept your file skills/poteto-mode/references/mine.md."
+  exists "$(backup_for codex skills/poteto-mode/references/mine.md)"
+}
 
+test_background_auto_updates_recover_old_folder() {
+  setup auto-update auto-updated
+  update_answering "k\n"
+  has "$claude/skills/poteto-mode/SKILL.md" "Write the code test first."
+  says "before the background auto-update"
+}
 
+test_removing_file_is_not_removing_skill() {
+  setup removed-file removed-file
+  update_answering "a\nk\n"
+  has "$claude/skills/recall/references/notes.md" "My edited notes."
+  exists "$claude/skills/recall/SKILL.md"
+  absent "$claude/hooks/session-start"
+  absent "$home/.agents/skills/recall"
+  says "the new release no longer has this file"
+}
 
 test_kept_conflict_keeps_old_base() {
   setup old-base both
@@ -400,6 +423,19 @@ test_personal_skill_collision_reports_accept() {
   exists "$claude/skills/poteto-mode/SKILL.md"
 }
 
+test_added_files_offer_copy_and_ignore_tool_markers() {
+  setup added-copy added
+  rm "$home/.cursor/plugins/local/p3stack/skills/poteto-mode/references/mine.md"
+  mkdir -p "$codex/node_modules/foo"
+  echo tool >"$codex/node_modules/foo/cache"
+  echo tool >"$codex/.in_use"
+  echo tool >"$codex/.orphaned_at"
+  echo tool >"$codex/.package-lock.json"
+  update_answering "y\n"
+  asked 1
+  has "$home/.cursor/plugins/local/p3stack/skills/poteto-mode/references/mine.md" "My own reference."
+  [[ $(find "$home/.p3stack/edits" -type f | wc -l) == 1 ]] || fail "backed up tool markers"
+}
 
 test_deleted_files_report_once() {
   setup deleted-file kept
@@ -426,6 +462,13 @@ EOF
   [[ $(cat "$home/.p3stack/installed/claude/commit") == "$old" ]] || fail "record changed after corrupt backup"
 }
 
+test_auto_updated_folder_missing_warns_once() {
+  setup auto-missing auto-updated
+  (eval "$(cat "$dir.env")"; claude plugin update p3stack-team-kit@p3stack)
+  rm -rf "$claude_old" "${claude_old/p3stack\/p3stack\//p3stack\/p3stack-team-kit\/}"
+  update_answering ""
+  [[ $(grep -c "Edits made before the auto-update may be" "$dir/out") == 1 ]] || fail "expected one missing-folder warning"
+}
 
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
 for name in ${*:-$cases}; do
