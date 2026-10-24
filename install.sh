@@ -1345,9 +1345,10 @@ lock_owner_alive() {
 }
 
 update_lock() {
-  local lock=$p3stack_home/lock
+  local lock=$p3stack_home/lock pid
   mkdir -p "$p3stack_home"
   if ! mkdir "$lock" 2>/dev/null; then
+    exec 9<"$lock"
     if lock_owner_alive "$lock"; then warn "another p3stack command is running or starting"; return 1; fi
     if ! mkdir "$lock/reclaim" 2>/dev/null; then
       if lock_owner_alive "$lock/reclaim"; then warn "another p3stack command is reclaiming its lock"; return 1; fi
@@ -1356,7 +1357,8 @@ update_lock() {
       mkdir "$lock/reclaim" || return 1
     fi
     printf '%s\n' "$$" >"$lock/reclaim/pid"
-    if lock_owner_alive "$lock"; then
+    pid=$(cat "$lock/pid" 2>/dev/null || true)
+    if [[ ! $lock -ef /dev/fd/9 ]] || { [[ -n $pid && $pid != *[!0-9]* ]] && kill -0 "$pid" 2>/dev/null; }; then
       rm "$lock/reclaim/pid"
       rmdir "$lock/reclaim"
       warn "another p3stack command acquired the lock"
@@ -1365,6 +1367,7 @@ update_lock() {
     rm -f "$lock/pid" "$lock/reclaim/pid"
     rmdir "$lock/reclaim"
     rmdir "$lock" || return 1
+    exec 9<&-
     mkdir "$lock" || { warn "another p3stack command acquired the lock"; return 1; }
   fi
   locked=1

@@ -141,7 +141,7 @@ Checks npm for a newer `p3stack` first and switches to it, so an old copy of the
 
 Start a new thread, or resume one, to load the update.
 
-Edits you make to an installed p3stack skill stay through `p3stack update`. It keeps an edited file that p3stack didn't change, and asks before it replaces one that p3stack also changed or removed, with an option to merge the two through a coding agent. User-added files stay too. Backups go in `~/.p3stack/edits/<tool>/<timestamp>-<release>-<run>/<plugin>/<path>` and are never deleted automatically. For a file's newest backup, list its tool folder with `ls -1 ~/.p3stack/edits/<tool>` and open the last timestamped folder containing that file. An interrupted update restores pending edits and finishes its install record on the next run. The by-hand commands below skip that check and overwrite your edits.
+Edits you make to an installed p3stack skill stay through `p3stack update`. It keeps an edited file that p3stack didn't change, and asks before it replaces one that p3stack also changed or removed, with an option to merge the two through a coding agent. User-added files stay too. Backups go in `~/.p3stack/edits/<tool>/<timestamp>-<release>-<run>/<plugin>/<path>` and are never deleted automatically. For a file's newest backup, run `ls -td ~/.p3stack/edits/<tool>/*/` and open the first folder containing that file. An interrupted update restores pending edits and finishes its install record on the next run. The by-hand commands below skip that check and overwrite your edits.
 
 By hand, Claude Code:
 
