@@ -42,7 +42,7 @@ Present the synthesizer's full Accepted / Rejected / Backlog output and wait for
 
 File each Backlog item to your team's devex or backlog tracker without waiting. Only the Accepted list waits for approval.
 
-Never edit a skill inside an installed plugin, in any provider plugin folder that the Subagents section of **poteto-mode** lists. Before approval, show its destination, `.agents/skills/<skill>/` or `~/.agents/skills/<skill>/`. After approval, copy the skill folder there, link it into the other providers' folders where the Subagents section of **poteto-mode** puts new skills, and edit the copy. Never open a PR or push.
+Edit a p3stack or p3stack-team-kit skill in place, in the installed plugin folder the session loaded it from. `p3stack update` finds edits there and keeps them. Before approval, show the full installed path of each file. After approval, edit it there and add `edited: true` to the frontmatter of each changed SKILL.md. A skill from any other plugin is lost when that plugin updates, so never edit it inside the plugin folders that the Subagents section of **poteto-mode** lists. Before approval, show its destination, `.agents/skills/<skill>/` or `~/.agents/skills/<skill>/`. After approval, copy the skill folder there, link it into the other providers' folders where the Subagents section of **poteto-mode** puts new skills, and edit the copy. Never open a PR or push.
 
 Follow each approved row's Routing exactly:
 
