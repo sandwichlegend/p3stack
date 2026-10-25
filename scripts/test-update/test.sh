@@ -881,6 +881,19 @@ test_lock_names_path_and_reclaims_reused_pid() {
   kill "$sleeper" 2>/dev/null || true
 }
 
+test_lock_reclaims_unrelated_process_named_p3stack() {
+  setup named-lock kept
+  bash -c 'exec -a p3stack-unrelated sleep 300' &
+  local sleeper=$!
+  mkdir "$home/.p3stack/lock"
+  echo "$sleeper" >"$home/.p3stack/lock/pid"
+  ps -o args= -p "$sleeper" >"$home/.p3stack/lock/command" 2>/dev/null || ps -o pid,args | awk -v pid="$sleeper" '$1 == pid { sub(/^ *[0-9]+ +/, ""); print }' >"$home/.p3stack/lock/command"
+  update_answering ""
+  recorded claude
+  absent "$home/.p3stack/lock"
+  kill "$sleeper" 2>/dev/null || true
+}
+
 test_backup_dedupe_compares_raw_bytes_and_mode() {
   setup raw-dedupe kept
   local file=$claude/skills/poteto-mode/SKILL.md
