@@ -221,9 +221,9 @@ test_first() {
   says "No record of the last install. Using the commit in the folder name (${old:0:7})."
   says "Kept your version of swarm."
   says "No record of the last install in Codex, and Codex doesn't say which version it has."
-  says "1 skill differs from the new release: swarm"
+  says "2 skills differ from the new release: poteto-mode, swarm"
   says "They may be your edits, or just the older version."
-  says "swarm in Codex:"
+  says "poteto-mode and swarm in Codex:"
   says "Installed p3stack's versions. Old copies saved in ~/.p3stack/edits/codex/."
   [[ $(grep -c 'Saved a record for next time.' "$dir/out") == 2 ]] || fail "expected a saved record for both tools"
   has "$claude/skills/swarm/SKILL.md" "Write the code test first."
@@ -389,7 +389,7 @@ test_no_silent_unguarded_update() {
   update_answering "" P3STACK_FAKE_JSON=reordered
   has "$claude/skills/poteto-mode/SKILL.md" "Write the code test first."
   setup root-unresolved kept
-  expect_failure=1 update_answering "" P3STACK_FAKE_JSON='[]'
+  expect_failure=1 update_answering "" P3STACK_FAKE_JSON='[{"id":"p3stack@p3stack"},{"id":"p3stack-team-kit@p3stack"}]'
   record_is claude "$old"
   absent "$claude"
   says "couldn't find where Claude Code keeps p3stack"
@@ -699,7 +699,7 @@ test_present_tool_without_p3stack_is_installed() {
   recorded cursor
 }
 
-test_unlisted_install_folder_stops_only_that_tool() {
+test_unresolved_install_listing_stops_only_that_tool() {
   setup unlisted-folder copy
   rm -rf "$home/.p3stack/installed/claude"
   mkdir "$dir/real"
@@ -709,7 +709,7 @@ test_unlisted_install_folder_stops_only_that_tool() {
 #!/usr/bin/env bash
 case "\$*" in
   "plugin list") exit 0 ;;
-  "plugin list --json") echo '[]'; exit 0 ;;
+  "plugin list --json") echo '[{"id":"p3stack@p3stack"},{"id":"p3stack-team-kit@p3stack"}]'; exit 0 ;;
 esac
 exec "$dir/real/claude" "\$@"
 EOF
@@ -723,7 +723,7 @@ EOF
 
 test_unresolved_root_stops_only_that_tool() {
   setup unresolved-one copy
-  expect_failure=1 update_answering "" P3STACK_FAKE_JSON='[]'
+  expect_failure=1 update_answering "" P3STACK_FAKE_JSON='[{"id":"p3stack@p3stack"},{"id":"p3stack-team-kit@p3stack"}]'
   record_is claude "$old"
   recorded codex
   says "couldn't find where Claude Code keeps"
@@ -1133,7 +1133,56 @@ EOF
   has "$home/.p3stack/pending/codex/sources/p3stack/skills/poteto-mode/SKILL.md" JOURNAL_MERGE
   says "uninstall failed"
   never_says "Dropped the unfinished"
+  cp "$dir/real/codex" "$dir/bin/codex"
+  tools=codex action=uninstall update_answering ""
+  absent "$home/.p3stack/pending/codex"
+  [[ -n $(grep -rl JOURNAL_MERGE "$home/.p3stack/edits/codex") ]] || fail "successful uninstall lost the merge result"
 }
+
+
+test_fetches_before_recovery() {
+  setup recovery-fetch both
+  stop_at_record_write
+  tools=claude expect_failure=1 update_answering "k\n"
+  rm "$dir/bin/cp"
+  local clone=$home/.p3stack/repo
+  rm -rf "$clone"
+  git init --quiet --initial-branch=main "$clone"
+  git -C "$clone" remote add origin "$dir/origin.git"
+  git -C "$clone" fetch --quiet --depth 1 origin "$old"
+  git -C "$clone" checkout --quiet -B main FETCH_HEAD
+  git -C "$clone" config branch.main.remote origin
+  git -C "$clone" config branch.main.merge refs/heads/main
+  tools=claude update_answering "a\n"
+  says "Finished an interrupted update in Claude Code."
+  absent "$home/.p3stack/pending/claude"
+  recorded claude
+}
+
+test_replay_leaves_non_plain_destination_alone() {
+  setup replay-symlink both
+  stop_at_record_write
+  tools=claude expect_failure=1 update_answering "a\n"
+  rm "$dir/bin/cp"
+  echo MY_EXTERNAL_FILE >"$home/external"
+  rm "$claude/skills/poteto-mode/SKILL.md"
+  ln -s "$home/external" "$claude/skills/poteto-mode/SKILL.md"
+  tools=claude expect_failure=1 update_answering ""
+  says "isn't a plain file any more"
+  never_says "Your edits are restored."
+  has "$home/external" MY_EXTERNAL_FILE
+  [[ -L $claude/skills/poteto-mode/SKILL.md ]] || fail "the newer symlink was replaced"
+}
+
+test_accept_uses_each_plugins_actual_release() {
+  setup accept-old-plugin clean
+  local team=$home/.claude/plugins/cache/p3stack/p3stack-team-kit
+  echo MY_TEAM_EDIT >>"$team/${old:0:12}/skills/deslop/SKILL.md"
+  tools=claude update_answering "a\n" P3STACK_FAKE_SKIP_UPDATE=p3stack-team-kit
+  cmp -s <(git --git-dir="$dir/origin.git" show "$old:team-kit/skills/deslop/SKILL.md") "$team/${old:0:12}/skills/deslop/SKILL.md" || fail "Accept didn't use the installed plugin's release"
+  [[ $(cat "$home/.p3stack/installed/claude/p3stack-team-kit.commit") == "$old" ]] || fail "team-kit record isn't the actual release"
+}
+
 
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
 for name in ${*:-$cases}; do

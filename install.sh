@@ -25,7 +25,6 @@ pending=$p3stack_home/pending
 cursor_previous=""
 present=""
 stopped=" "
-unfinished=" "
 reinstall=" "
 scanned_tools=" "
 gen_stamp=""
@@ -255,7 +254,7 @@ except ValueError: sys.exit(1)
     list=${list//$'\n'/ }
     [[ $list =~ $pattern ]] && root=${BASH_REMATCH[1]}
   fi
-  [[ -n $root && -d $root ]] && printf '%s' "$root"
+  [[ -n $root && ( -d $root || ${2:-} == allow-missing ) ]] && printf '%s' "$root"
 }
 
 # Claude Code names each install folder by the first 12 characters of its commit.
@@ -562,19 +561,62 @@ record_write() {
 # A tool that is merely present gets a plain install. Only plugins a tool already has are scanned for edits.
 plugin_installed() {
   local tool=$1 plugin=$2 listing
-  [[ ! -f $records/$tool/$plugin.commit ]] || return 0
   case $tool in
     claude)
-      if ! listing=$(claude plugin list </dev/null 2>/dev/null); then
-        [[ -d ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/$marketplace/$plugin ]]
-        return
-      fi
-      lists "$listing" "$plugin@$marketplace" || [[ -d ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/$marketplace/$plugin ]]
+      listing=$(claude plugin list --json </dev/null 2>/dev/null) || return 2
+      [[ $listing == *\"$plugin@$marketplace\"* ]]
       ;;
-    codex) [[ -d $codex_home/plugins/cache/$marketplace/$plugin ]] ;;
+    codex)
+      if listing=$(codex plugin list </dev/null 2>/dev/null); then
+        lists "$listing" "$plugin@$marketplace"
+      else
+        listing=$(codex plugin marketplace list </dev/null 2>/dev/null) || return 2
+        lists "$listing" "$marketplace" && codex_root "$plugin" >/dev/null
+      fi
+      ;;
     cursor) [[ -d $cursor_local/$plugin ]] ;;
     opencode) opencode_package >/dev/null ;;
   esac
+}
+
+prepare_installation() {
+  local tool=$1 plugin status root path expected actual leftover
+  for plugin in "${plugins[@]}"; do
+    status=0
+    plugin_installed "$tool" "$plugin" || status=$?
+    ((status)) || continue
+    if ((status == 2)); then
+      warn "couldn't list p3stack in $(tool_label "$tool"), so nothing was installed there. Check the tool's plugin listing and run p3stack update again."
+      stopped+="$tool "
+      return 0
+    fi
+    leftover=0
+    [[ ! -f $records/$tool/$plugin.commit ]] || leftover=1
+    case $tool in
+      claude) printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/$marketplace/$plugin"/* ;;
+      codex) printf '%s\n' "$codex_home/plugins/cache/$marketplace/$plugin"/* ;;
+      *) : ;;
+    esac >"$work/leftover-roots"
+    while IFS= read -r root; do
+      [[ -d $root ]] || continue
+      leftover=1
+      if ! installed_paths "$tool" "$root" >"$work/leftover-paths"; then stopped+="$tool "; return 0; fi
+      while IFS= read -r path; do
+        expected=$(release_hash "$records/$tool" "$plugin" "$path")
+        actual=$(file_hash "$root/$path") || { stopped+="$tool "; return 0; }
+        [[ -n $expected && $actual == "$expected" ]] && continue
+        if ! save_copy "$tool" "$gen_stamp-leftover" "$plugin/$path" "$root/$path" >/dev/null; then stopped+="$tool "; return 0; fi
+      done <"$work/leftover-paths"
+    done <"$work/leftover-roots"
+    if ((leftover)); then
+      rm -f "$records/$tool/$plugin.commit" "$records/$tool/$plugin.sha256" || return 1
+      if [[ -f $records/$tool/bases ]]; then
+        awk -F '\t' -v prefix="$plugin/" 'index($1, prefix) != 1' "$records/$tool/bases" >"$work/bases.leftover" &&
+          mv "$work/bases.leftover" "$records/$tool/bases" || return 1
+      fi
+      say "  $plugin isn't installed in $(tool_label "$tool"). Leftover files that differ from its record are saved in $(tilde "$edits_home/$tool")/, and its record was dropped."
+    fi
+  done
 }
 
 has_p3stack() {
@@ -772,7 +814,7 @@ change_summary() {
 }
 
 # One row per file per installed folder. kind is "old" for a folder a background auto-update left behind, "active" for the folder that replaced it.
-row_fields="tool plugin path class root base action source from backup pre release apply partner kind replaces"
+row_fields="tool plugin path class root base action source from backup pre release apply partner kind replaces outcome"
 
 rows_reset() {
   local field
@@ -791,7 +833,7 @@ rows_reset
 add_row() {
   local n=${#row_tool[@]}
   row_tool[n]=$1 row_plugin[n]=$2 row_path[n]=$3 row_class[n]=$4 row_root[n]=$5 row_base[n]=$6 row_pre[n]=${7:-} row_kind[n]=${8:-}
-  row_action[n]="" row_source[n]="" row_from[n]="" row_backup[n]="" row_release[n]="" row_apply[n]="" row_partner[n]="" row_replaces[n]=""
+  row_action[n]="" row_source[n]="" row_from[n]="" row_backup[n]="" row_release[n]="" row_apply[n]="" row_partner[n]="" row_replaces[n]="" row_outcome[n]=""
 }
 
 edited() { [[ ${row_class[$1]} == edited-* || ${row_class[$1]} == unknown-base ]]; }
@@ -922,7 +964,7 @@ backup_row() {
 scan_failed=0
 
 scan_folder() {
-  local tool=$1 plugin=$2 root=$3 base=$4 kind=$5 listing plugin_base path path_base override record new disk class skill old lag_from
+  local tool=$1 plugin=$2 root=$3 base=$4 kind=$5 listing plugin_base path path_base override record new disk class skill old lag_from path_state
   listing=$work/base-$tool-$plugin-$kind
   : >"$listing"
   [[ -z $base ]] || base_hashes "$tool" "$plugin" "$base" >"$listing"
@@ -931,9 +973,8 @@ scan_folder() {
   { pair_hashes "$listing" "$new_release/$plugin.sha256" | cut -d $'\034' -f1; cat "$work/installed-paths"; } | LC_ALL=C sort -u >"$work/paths"
   while IFS= read -r path; do
     [[ -n $path ]] || continue
-    path_base=$base
+    path_base=$base path_state=$plugin_base
     override=$(awk -F '\t' -v path="$plugin/$path" '$1 == path { print $2 }' "$records/$tool/bases" 2>/dev/null || true)
-    [[ $kind != active ]] || override=""
     new=$(release_hash "$new_release" "$plugin" "$path")
     disk=""
     [[ ! -f $root/$path ]] || disk=$(file_hash "$root/$path")
@@ -948,7 +989,10 @@ scan_folder() {
     else
       [[ -z $override ]] || path_base=$override
       record=$(awk -v path="$path" 'substr($0, 67) == path { print substr($0, 1, 64) }' "$listing")
-      if [[ -n $override ]]; then
+      if [[ $override == unknown ]]; then
+        path_state=unknown record="" path_base=""
+      elif [[ -n $override ]]; then
+        path_state=known
         if ! old=$(release_tree "$override"); then
           warn "couldn't read p3stack's release ${override:0:7}, which your kept $(label "$path") is based on"
           scan_failed=1
@@ -962,10 +1006,10 @@ scan_folder() {
       elif [[ -z $record && -z $new ]] && ! in_history "$plugin" "$path"; then
         class=edited-added path_base=added
       else
-        class=$(classify "$plugin_base" "$record" "$disk" "$new")
+        class=$(classify "$path_state" "$record" "$disk" "$new")
         lag_from=""
-        [[ $plugin_base == unknown ]] || lag_from=$path_base
-        if [[ $class != untouched ]] && is_lag "$plugin" "$path" "$disk" "$lag_from"; then class=untouched; fi
+        [[ $path_state == unknown ]] || lag_from=$path_base
+        if [[ $path_state == known && $class != untouched ]] && is_lag "$plugin" "$path" "$disk" "$lag_from"; then class=untouched; fi
         if [[ $class == edited-removed ]]; then
           skill=$(skill_of "$path" || true)
           [[ -n $skill && ! -f $new_release/$plugin/skills/$skill/SKILL.md ]] || class=edited-file-removed
@@ -1451,10 +1495,11 @@ edits_decide() {
 
 edits_prepare() {
   local tool base olds=() scan=()
-  release_fetch
   scan_generation=$gen_stamp-${new_commit:0:7}
   for tool; do
-    [[ $stopped$unfinished != *" $tool "* ]] || continue
+    [[ $stopped != *" $tool "* ]] || continue
+    prepare_installation "$tool"
+    [[ $stopped != *" $tool "* ]] || continue
     has_p3stack "$tool" || continue
     scan+=("$tool")
     reinstall+="$tool "
@@ -1475,7 +1520,7 @@ edits_prepare() {
   done
   edits_decide
   for tool; do
-    [[ $stopped$unfinished != *" $tool "* ]] || continue
+    [[ $stopped != *" $tool "* ]] || continue
     if ! journal_write "$tool"; then
       warn "couldn't save the update plan for $(tool_label "$tool") in $(tilde "$pending"), so nothing was installed there"
       stopped+="$tool "
@@ -1488,14 +1533,13 @@ report_row() {
   local i=$1 name
   name=$(label "${row_path[i]}")
   class_policy "$i"
-  [[ $report_style != group || ${row_action[i]} == newer ]] || return 0
+  [[ $report_style != group ]] || return 0
   case ${row_action[i]} in
     moved) say "  $moved_note" ;;
     keep) say "  $keep_note" ;;
     merged) say "  Installed the merged $name, marked edited." ;;
     copy) say "  Copied your $name from $(tool_label "${row_from[i]}"), marked edited." ;;
     accept) say "  $accept_note" ;;
-    newer) say "  You changed $name again after the update started, so it was left as it is. That version is saved in $(tilde "${row_backup[i]}")." ;;
   esac
 }
 
@@ -1549,77 +1593,131 @@ journal_save_sources() {
   local tool=$1 journal=$2 which=$3 i saved
   for ((i = 0; i < ${#row_tool[@]}; i++)); do
     [[ ${row_source[i]} == "$journal/sources/"* && -f ${row_source[i]} ]] || continue
-    [[ $which == all || ${row_action[i]} == newer ]] || continue
+    if [[ $which != all ]]; then
+      case ${row_outcome[i]} in already-right|restored) continue ;; esac
+    fi
     saved=$(save_copy "$tool" "$gen_stamp-merged" "${row_plugin[i]}/${row_path[i]}" "${row_source[i]}") || return 1
     say "  Your merged $(label "${row_path[i]}") is saved in $(tilde "$saved")."
   done
 }
 
-# Each destination is hashed before it is touched. The update may replace the user's content it asked about (pre), the release files (release), or nothing.
-# Anything else is a newer edit, and stays.
-apply_row() {
-  local i=$1 dest=$2 journal=$3 bases=$4 replay=$5 current="" source="" saved
+reconcile_file() {
+  local dest=$1 source=$2 safe=$3 leave=$4 tool=$5 path=$6 current="" wanted=""
+  reconcile_outcome="" reconcile_backup=""
   if [[ -L $dest || ( -e $dest && ! -f $dest ) ]]; then
-    current=other
-  elif [[ -f $dest ]]; then
-    current=$(file_hash "$dest") || return 1
-  fi
-  case ${row_action[i]}/${row_class[i]} in
-    */deleted|accept/*) [[ ! -f $journal/tree/${row_plugin[i]}/${row_path[i]} ]] || source=$journal/tree/${row_plugin[i]}/${row_path[i]} ;;
-    moved/*) ;;
-    *) source=${row_source[i]} ;;
-  esac
-  if [[ $current == "${row_apply[i]}" ]]; then
-    :
-  elif [[ $replay == 1 && -n $current && $current == "${row_pre[i]}" ]]; then
-    row_action[i]=newer
+    reconcile_outcome=not-a-plain-file
+    warn "$(tilde "$dest") isn't a plain file any more, so it was left as it is."
     return 0
-  elif [[ -z $current || $current == "${row_pre[i]}" || " ${row_release[i]} " == *" $current "* ]]; then
+  fi
+  [[ ! -f $dest ]] || current=$(file_hash "$dest") || return 1
+  [[ -z $source ]] || wanted=$(file_hash "$source") || return 1
+  if [[ $current == "$wanted" ]]; then
+    reconcile_outcome=already-right
+  elif [[ -n $current && $current == "$leave" ]]; then
+    reconcile_outcome=left-for-scan
+    say "  Your pre-update version of $(label "${path#*/}") in $(tool_label "$tool") was left for this run's scan."
+  elif [[ -z $current || " $safe " == *" $current "* ]]; then
     if [[ -z $source ]]; then
       rm -f "$dest" || return 1
     else
       mkdir -p "$(dirname "$dest")" && cp -p "$source" "$dest" && cmp -s "$source" "$dest" || return 1
     fi
-  elif [[ $current == other ]]; then
-    warn "$(tilde "$dest") isn't a plain file any more, so it was left as it is."
-    row_action[i]=newer row_backup[i]=""
-    return 0
+    reconcile_outcome=restored
   else
-    saved=$(save_copy "${row_tool[i]}" "$gen_stamp-newer" "${row_plugin[i]}/${row_path[i]}" "$dest") || return 1
-    row_action[i]=newer row_backup[i]=$saved
-    return 0
+    reconcile_backup=$(save_copy "$tool" "$gen_stamp-newer" "$path" "$dest") || return 1
+    reconcile_outcome=newer-user-edit
+    say "  You changed $(label "${path#*/}") in $(tool_label "$tool") after the update started, so it was left as it is. That version is saved in $(tilde "$reconcile_backup")."
   fi
+}
+
+write_base() {
+  local file=$1 path=$2 base=${3:-unknown}
+  if [[ -f $file ]]; then
+    awk -F '\t' -v path="$path" '$1 != path' "$file" >"$file.next" || return 1
+  else
+    : >"$file.next" || return 1
+  fi
+  printf '%s\t%s\n' "$path" "$base" >>"$file.next" && mv "$file.next" "$file"
+}
+
+apply_row() {
+  local i=$1 dest=$2 tree=$3 bases=$4 replay=$5 plan=$6 actual=$7 source="" leave="" base=""
+  case ${row_action[i]}/${row_class[i]} in
+    */deleted|accept/*) [[ ! -f $tree/${row_plugin[i]}/${row_path[i]} ]] || source=$tree/${row_plugin[i]}/${row_path[i]} ;;
+    moved/*) ;;
+    *) source=${row_source[i]} ;;
+  esac
+  [[ $replay != 1 ]] || leave=${row_pre[i]}
+  reconcile_file "$dest" "$source" "${row_pre[i]} ${row_release[i]}" "$leave" "${row_tool[i]}" "${row_plugin[i]}/${row_path[i]}" || return 1
+  row_outcome[i]=$reconcile_outcome
+  case $reconcile_outcome in
+    newer-user-edit|left-for-scan|not-a-plain-file)
+      [[ -z $reconcile_backup ]] || row_backup[i]=$reconcile_backup
+      write_base "$bases" "${row_plugin[i]}/${row_path[i]}" "${row_base[i]}"
+      return
+      ;;
+  esac
   case ${row_action[i]}/${row_class[i]} in
     */deleted|accept/*|moved/*) ;;
     *) stamp "$dest" || return 1 ;;
   esac
   case ${row_action[i]}/${row_class[i]} in
-    copy/*) [[ -z ${row_base[i]} ]] || printf '%s\t%s\n' "${row_plugin[i]}/${row_path[i]}" "${row_base[i]}" >>"$bases" ;;
-    keep/edited-conflict) printf '%s\t%s\n' "${row_plugin[i]}/${row_path[i]}" "${row_base[i]}" >>"$bases" ;;
-    keep/edited-file-removed|keep/edited-added|keep/edited-kept-removed|keep/edited-removed) printf '%s\tadded\n' "${row_plugin[i]}/${row_path[i]}" >>"$bases" ;;
+    copy/*) base=${row_base[i]} ;;
+    keep/edited-conflict) base=${row_base[i]:-unknown} ;;
+    keep/edited-file-removed|keep/edited-added|keep/edited-kept-removed|keep/edited-removed) base=added ;;
   esac
+  if [[ $actual != "$plan" ]]; then
+    case ${row_action[i]} in
+      keep|copy) base=${row_base[i]:-unknown} ;;
+      merged) base=$plan ;;
+    esac
+  fi
+  [[ -z $base ]] || write_base "$bases" "${row_plugin[i]}/${row_path[i]}" "$base"
+  return 0
 }
 
-# Returns 2 when a folder it needs is missing, so the caller can reinstall p3stack there and try again.
 journal_apply() {
-  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i root plugin plugin_commit tree had_record=0 kept=() accepted=() reported=" " skill bases
+  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i p root plugin installed tree had_record=0 kept=() accepted=() reported=" " skill bases raced=0
+  local actual_commits=() actual_trees=() actual_roots=()
   journal_load "$tool" || return 1
   commit=$(cat "$journal/commit") || return 1
-  for ((i = 0; i < ${#row_tool[@]}; i++)); do
-    "${tool}_root" "${row_plugin[i]}" >/dev/null || return 2
+  for ((p = 0; p < ${#plugins[@]}; p++)); do
+    plugin=${plugins[p]}
+    root=$("${tool}_root" "$plugin") || return 2
+    actual_roots[p]=$root
+    if ! installed=$("${tool}_commit" "$plugin" 2>/dev/null) || [[ -z $installed ]]; then
+      git -C "$release_clone" fetch --quiet origin </dev/null 3<&- || return 1
+      if ! installed=$("${tool}_commit" "$plugin" 2>/dev/null) || [[ -z $installed ]]; then
+        warn "couldn't determine the commit $(tool_label "$tool") installed for $plugin, so its record stays unchanged and this update waits in $(tilde "$journal")"
+        return 1
+      fi
+    fi
+    if ! tree=$(release_tree "$installed") &&
+      ! { git -C "$release_clone" fetch --quiet origin </dev/null 3<&- && tree=$(release_tree "$installed"); }; then
+      warn "couldn't read the p3stack release $(tool_label "$tool") installed for $plugin (${installed:0:7}), so its record wasn't updated"
+      return 1
+    fi
+    [[ $replay != 1 || $installed == "$commit" ]] || return 3
+    actual_commits[p]=$installed actual_trees[p]=$tree
+    [[ $installed == "$commit" ]] || raced=1
   done
   ! has_record "$tool" || had_record=1
   bases=$journal/bases.next
   : >"$bases" || return 1
   for ((i = 0; i < ${#row_tool[@]}; i++)); do
-    root=$("${tool}_root" "${row_plugin[i]}") || return 2
-    if ! apply_row "$i" "$root/${row_path[i]}" "$journal" "$bases" "$replay"; then
-      warn "couldn't write $(tilde "$root/${row_path[i]}"). The rest of this update waits in $(tilde "$journal")."
+    for ((p = 0; p < ${#plugins[@]}; p++)); do
+      [[ ${plugins[p]} == "${row_plugin[i]}" ]] && break
+    done
+    tree=${actual_trees[p]}
+    row_release[i]+=" $(release_hash "$tree" "${row_plugin[i]}" "${row_path[i]}")"
+    if ! apply_row "$i" "${actual_roots[p]}/${row_path[i]}" "$tree" "$bases" "$replay" "$commit" "${actual_commits[p]}"; then
+      warn "couldn't write $(tilde "${actual_roots[p]}/${row_path[i]}"). The rest of this update waits in $(tilde "$journal")."
       return 1
     fi
+    case ${row_outcome[i]} in already-right|restored) ;; *) continue ;; esac
     skill=$(skill_of "${row_path[i]}" || true)
     class_policy "$i"
-    if [[ $report_style == group && ${row_action[i]} != newer ]]; then
+    if [[ $report_style == group ]]; then
       if [[ ${row_action[i]} == keep ]]; then kept+=("$(label "${row_path[i]}")"); else accepted+=("$i"); fi
     elif [[ ${row_action[i]} != moved || $reported != *" $skill "* ]]; then
       report_row "$i"
@@ -1629,53 +1727,40 @@ journal_apply() {
   if ((${#kept[@]})); then say "  Kept $(and_list "${kept[@]}"), marked edited."; fi
   if ((${#accepted[@]})); then say "  Installed p3stack's versions. Old copies saved in $(tilde "$edits_home/$tool")/."; fi
   mkdir -p "$records/$tool" && mv "$bases" "$records/$tool/bases" || return 1
-  for plugin in "${plugins[@]}"; do
-    "${tool}_root" "$plugin" >/dev/null 2>&1 || continue
-    if ! plugin_commit=$("${tool}_commit" "$plugin" 2>/dev/null) || [[ -z $plugin_commit ]]; then
-      warn "couldn't determine the commit $(tool_label "$tool") installed for $plugin, so its record stays unchanged and this update waits in $(tilde "$journal")"
-      return 1
-    fi
-    if [[ $plugin_commit == "$commit" ]]; then
-      tree=$journal/tree
-    elif ! tree=$(release_tree "$plugin_commit") &&
-      ! { git -C "$release_clone" fetch --quiet origin </dev/null 3<&- && tree=$(release_tree "$plugin_commit"); }; then
-      warn "couldn't read the p3stack release $(tool_label "$tool") installed for $plugin (${plugin_commit:0:7}), so its record wasn't updated"
-      return 1
-    fi
-    record_write "$tool" "$plugin" "$plugin_commit" "$tree" || return 1
+  for ((p = 0; p < ${#plugins[@]}; p++)); do
+    record_write "$tool" "${plugins[p]}" "${actual_commits[p]}" "${actual_trees[p]}" || return 1
   done
-  journal_save_sources "$tool" "$journal" newer || return 1
+  journal_save_sources "$tool" "$journal" unapplied || return 1
   rm -rf "$journal" || return 1
+  if ((raced)); then say "  p3stack released again while you were choosing, or the tool installed a different release. Your choices were kept, and you'll be asked about any newer change next time."; fi
   if ((had_record == 0)) && [[ $scanned_tools == *" $tool "* ]]; then say "  Saved a record for next time."; fi
 }
 
-# Undoes a run whose tool update never finished: every edited file goes back to the user's version, and the record stays as it was.
 journal_rollback() {
-  local tool=$1 journal=$pending/$1 i dest current
+  local tool=$1 journal=$pending/$1 i plugin root dest installed tree safe bases=$work/rollback-bases
   journal_load "$tool" || return 1
-  for ((i = 0; i < ${#row_tool[@]}; i++)); do
-    [[ -z ${row_backup[i]} || -d ${row_root[i]} ]] || return 2
-  done
+  if [[ $tool == claude ]]; then
+    for plugin in "${plugins[@]}"; do
+      root=$(claude_root "$plugin" allow-missing 2>/dev/null || true)
+      [[ -z $root ]] || mkdir -p "$root" || return 1
+    done
+  fi
+  if [[ -f $records/$tool/bases ]]; then cp "$records/$tool/bases" "$bases" || return 1; else : >"$bases" || return 1; fi
   for ((i = 0; i < ${#row_tool[@]}; i++)); do
     [[ -n ${row_backup[i]} ]] || continue
-    dest=${row_root[i]}/${row_path[i]}
-    current=""
-    if [[ -L $dest || ( -e $dest && ! -f $dest ) ]]; then
-      current=other
-    elif [[ -f $dest ]]; then
-      current=$(file_hash "$dest") || return 1
+    root=$("${tool}_root" "${row_plugin[i]}" 2>/dev/null || true)
+    [[ -n $root ]] || root=${row_root[i]}
+    dest=$root/${row_path[i]}
+    safe=${row_release[i]}
+    installed=$("${tool}_commit" "${row_plugin[i]}" 2>/dev/null || true)
+    if [[ -n $installed ]] && tree=$(release_tree "$installed"); then
+      safe+=" $(release_hash "$tree" "${row_plugin[i]}" "${row_path[i]}")"
     fi
-    if [[ -n $current && $current == "${row_pre[i]}" ]]; then
-      continue
-    elif [[ -z $current || " ${row_release[i]} " == *" $current "* ]]; then
-      mkdir -p "$(dirname "$dest")" && cp -p "${row_backup[i]}" "$dest" && cmp -s "${row_backup[i]}" "$dest" || return 1
-    elif [[ $current == other ]]; then
-      warn "$(tilde "$dest") isn't a plain file any more, so it was left as it is. Your version is saved in $(tilde "${row_backup[i]}")."
-    else
-      row_backup[i]=$(save_copy "$tool" "$gen_stamp-newer" "${row_plugin[i]}/${row_path[i]}" "$dest") || return 1
-      say "  You changed $(label "${row_path[i]}") in $(tool_label "$tool") after the update stopped, so it was left as it is. That version is saved in $(tilde "${row_backup[i]}")."
-    fi
+    reconcile_file "$dest" "${row_backup[i]}" "$safe" "${row_pre[i]}" "$tool" "${row_plugin[i]}/${row_path[i]}" || return 1
+    row_outcome[i]=$reconcile_outcome
+    write_base "$bases" "${row_plugin[i]}/${row_path[i]}" "${row_base[i]}" || return 1
   done
+  mkdir -p "$records/$tool" && mv "$bases" "$records/$tool/bases" || return 1
   journal_save_sources "$tool" "$journal" all || return 1
   rm -rf "$journal"
 }
@@ -1689,11 +1774,12 @@ journal_shelve() {
     }
   fi
   mkdir -p "$p3stack_home/pending-failed" && mv "$dir" "$dest" || { warn "couldn't move $(tilde "$dir") aside"; return 1; }
-  warn "Couldn't read the unfinished update in $(tilde "$dir"), so it was moved to $(tilde "$dest"). Your backups are in $(tilde "$edits_home")/."
+  warn "Couldn't read the unfinished update in $(tilde "$dir"), so it was moved to $(tilde "$dest"). Your backups are in $(tilde "$edits_home")/. Check the saved files before running p3stack update again."
 }
 
 journal_drop() {
   local tool=$1
+  journal_load "$tool" || { journal_shelve "$pending/$tool" "$tool"; return; }
   journal_save_sources "$tool" "$pending/$tool" all || return 1
   rm -rf "${pending:?}/$tool" || return 1
   say "Dropped the unfinished p3stack update for $(tool_label "$tool"). Your backups stay in $(tilde "$edits_home/$tool")/."
@@ -1701,6 +1787,7 @@ journal_drop() {
 
 recover_updates() {
   local dir name status
+  [[ $action != uninstall ]] || return 0
   for dir in "$pending"/*; do
     [[ -d $dir ]] || continue
     name=${dir##*/}
@@ -1708,34 +1795,21 @@ recover_updates() {
       journal_shelve "$dir" "$name" || stopped+="$name "
       continue
     fi
-    if [[ $action == uninstall && " $present " == *" $name "* ]]; then
-      journal_drop "$name" || stopped+="$name "
-      continue
-    fi
-    status=0
+    status=3
     if [[ $(cat "$dir/state") == tool-updated ]]; then
+      status=0
       journal_apply "$name" 1 || status=$?
-      ((status)) || say "Finished an interrupted update in $(tool_label "$name"). Your edits are restored."
-    else
-      journal_rollback "$name" || status=$?
-      ((status)) || say "An earlier update in $(tool_label "$name") stopped before it finished. Your files there are as they were before it."
+      ((status)) || say "Finished an interrupted update in $(tool_label "$name"). Any files left in place are checked by this run's scan."
     fi
-    case $status in
-      0) ;;
-      2)
-        if [[ " $present " == *" $name "* ]]; then
-          unfinished+="$name "
-          reinstall+="$name "
-          say "An earlier update in $(tool_label "$name") stopped partway and its p3stack folder is missing. This run reinstalls p3stack there, then puts your edits back."
-        else
-          warn "An earlier update in $(tool_label "$name") stopped partway. Your edits wait in $(tilde "$dir"). Run \"p3stack update $name\" to finish it."
-        fi
-        ;;
-      *)
-        stopped+="$name "
-        warn "Couldn't finish the earlier update in $(tool_label "$name"). It waits in $(tilde "$dir"), and $(tool_label "$name") is left alone this run. Your backups are in $(tilde "$edits_home/$name")/."
-        ;;
-    esac
+    if ((status == 2 || status == 3)); then
+      status=0
+      journal_rollback "$name" || status=$?
+      ((status)) || say "An earlier update in $(tool_label "$name") needs a fresh scan. Its backed-up files were reconciled, and this run checks every surviving p3stack folder before installing."
+    fi
+    if ((status)); then
+      stopped+="$name "
+      warn "Couldn't finish the earlier update in $(tool_label "$name"). It waits in $(tilde "$dir"), and $(tool_label "$name") is left alone this run. Your backups are in $(tilde "$edits_home/$name")/. Check the tool's plugin listing, then run p3stack update $name again."
+    fi
   done
   rows_reset
 }
@@ -1868,6 +1942,7 @@ main() {
   update_lock
   work=$(mktemp -d "${TMPDIR:-/tmp}/p3stack.XXXXXX")
   gen_stamp=$(date -u +%Y%m%dT%H%M%SZ)-${work##*.}
+  if [[ $action != uninstall ]]; then release_fetch; fi
   recover_updates
   if [[ $action != uninstall && -n $present ]]; then edits_prepare $present; fi
   for tool in $present; do
@@ -1881,6 +1956,7 @@ main() {
     [[ $action != install || $reinstall != *" $tool "* ]] || tool_action=update
     if "${tool}_${tool_action}"; then
       if [[ $action == uninstall ]]; then
+        if [[ -d $pending/$tool ]]; then journal_drop "$tool" || { failed+=" $tool"; continue; }; fi
         rm -rf "${records:?}/$tool"
         done_tools="$done_tools $tool"
         continue
@@ -1897,12 +1973,15 @@ main() {
     else
       failed="$failed $tool"
       warn "$action stopped for $tool"
-      [[ $action != uninstall && -d $pending/$tool ]] || continue
+      if [[ $action == uninstall ]]; then
+        [[ ! -d $pending/$tool ]] || warn "uninstall failed in $(tool_label "$tool"), so its unfinished update stays in $(tilde "$pending/$tool"). Your backups stay in $(tilde "$edits_home/$tool")/. Retry p3stack uninstall $tool."
+        continue
+      fi
+      [[ -d $pending/$tool ]] || continue
       status=0
       journal_rollback "$tool" || status=$?
       case $status in
-        0) say "Your files in $(tool_label "$tool") are as they were before this update. p3stack wasn't updated there." ;;
-        2) warn "$(tool_label "$tool")'s p3stack folder is missing, so your edits wait in $(tilde "$pending/$tool"). The next p3stack update reinstalls p3stack there and puts them back." ;;
+        0) say "$(tool_label "$tool")'s update didn't finish. Your backed-up files were reconciled; files left in place will be scanned next time." ;;
         *) warn "Couldn't put your files in $(tool_label "$tool") back. They wait in $(tilde "$pending/$tool"), and your backups are in $(tilde "$edits_home/$tool")/." ;;
       esac
     fi
