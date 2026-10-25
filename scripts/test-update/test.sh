@@ -883,8 +883,9 @@ test_lock_names_path_and_reclaims_reused_pid() {
 
 test_lock_reclaims_unrelated_process_named_p3stack() {
   setup named-lock kept
-  bash -c 'exec -a p3stack-unrelated sleep 300' &
+  bash -c 'exec -a p3stack-unrelated /bin/sleep 300' &
   local sleeper=$!
+  kill -0 "$sleeper" || fail "the unrelated lock owner exited before the test"
   mkdir "$home/.p3stack/lock"
   echo "$sleeper" >"$home/.p3stack/lock/pid"
   ps -o args= -p "$sleeper" >"$home/.p3stack/lock/command" 2>/dev/null || ps -o pid,args | awk -v pid="$sleeper" '$1 == pid { sub(/^ *[0-9]+ +/, ""); print }' >"$home/.p3stack/lock/command"
