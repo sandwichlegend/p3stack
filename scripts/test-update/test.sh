@@ -511,9 +511,9 @@ test_background_auto_updates_recover_opencode_folder() {
   setup auto-opencode clean
   local package=$home/.cache/opencode/npm/git-p3stack-0123456789ab
   echo "My OpenCode edit." >>"$package/0000000000001/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md"
-  (load_fixture || exit 99; opencode plugin update github:sandwichlegend/p3stack)
+  (load_fixture || exit 99; P3STACK_FAKE_OPENCODE_NEW_FOLDER=1 opencode plugin update github:sandwichlegend/p3stack)
   update_answering "n\n"
-  has "$package/0000000000003/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md" "My OpenCode edit."
+  has "$package/0000000000002/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md" "My OpenCode edit."
   says "before the background auto-update"
 }
 
@@ -672,7 +672,7 @@ test_record_matches_what_the_tool_installed() {
   never_says "deslop"
 }
 
-test_unknown_installed_commit_keeps_record_and_journal() {
+test_failed_codex_marketplace_listing_stops_before_replace() {
   setup unknown-commit copy
   mkdir "$dir/real"
   cp "$here/fake-tool" "$dir/real/codex"
@@ -688,8 +688,11 @@ EOF
   chmod +x "$dir/bin/codex" "$dir/real/codex"
   tools=codex expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
   record_is codex "$old"
-  exists "$home/.p3stack/pending/codex"
-  says "couldn't determine the commit Codex installed"
+  absent "$home/.p3stack/pending/codex"
+  says 'codex plugin marketplace list'
+  never_says '$ codex plugin marketplace upgrade'
+  never_says '$ codex plugin add'
+  is_release "$old" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
 }
 
 test_failed_update_keeps_old_record() {
@@ -791,10 +794,10 @@ test_opencode_auto_update_scans_both_folders() {
   setup opencode-both clean
   local package=$home/.cache/opencode/npm/git-p3stack-0123456789ab skill=node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md
   echo "OLD_OPENCODE_EDIT" >>"$package/0000000000001/$skill"
-  (load_fixture || exit 99; opencode plugin update github:sandwichlegend/p3stack)
+  (load_fixture || exit 99; P3STACK_FAKE_OPENCODE_NEW_FOLDER=1 opencode plugin update github:sandwichlegend/p3stack)
   echo "ACTIVE_OPENCODE_EDIT" >>"$package/0000000000002/$skill"
   update_answering "" P3STACK_NONINTERACTIVE=1
-  has "$package/0000000000003/$skill" "ACTIVE_OPENCODE_EDIT"
+  has "$package/0000000000002/$skill" "ACTIVE_OPENCODE_EDIT"
   [[ -n $(grep -rl OLD_OPENCODE_EDIT "$home/.p3stack/edits/opencode") ]] || fail "older OpenCode edit has no backup"
 }
 
@@ -1418,7 +1421,7 @@ test_opencode_uninstalled_listing_backs_up_leftovers() {
   local root
   root=$(find "$home/.cache/opencode/npm" -path '*/p3stack/p3stack/skills/poteto-mode/SKILL.md' | head -1)
   echo OPENCODE_LEFTOVER_EDIT >>"$root"
-  (load_fixture || exit 99; opencode plugin update github:sandwichlegend/p3stack; opencode plugin remove github:sandwichlegend/p3stack)
+  (load_fixture || exit 99; P3STACK_FAKE_OPENCODE_NEW_FOLDER=1 opencode plugin update github:sandwichlegend/p3stack; opencode plugin remove github:sandwichlegend/p3stack)
   tools=opencode action=install update_answering "" P3STACK_NONINTERACTIVE=1
   [[ -n $(grep -rl OPENCODE_LEFTOVER_EDIT "$home/.p3stack/edits/opencode" 2>/dev/null) ]] || fail 'OpenCode leftover edit has no backup'
   never_says 'No edited files.'
@@ -1491,7 +1494,7 @@ if [[ \$* == 'plugin marketplace list' && -f '$dir/first-added' && ! -f '$dir/pu
     echo UPSTREAM_TEAM_THREE >>'$dir/release/team-kit/skills/deslop/SKILL.md'
     git -C '$dir/release' -c user.name=fixture -c user.email=fixture@example.com commit -qam third
     git -C '$dir/release' push -q '$dir/origin.git' main
-    '$dir/realbin/codex' plugin marketplace upgrade p3stack
+    git -C '$home/.codex/.tmp/marketplaces/p3stack' pull --quiet --ff-only
     touch '$dir/published'
   fi
 fi
@@ -1510,6 +1513,15 @@ WRAP
   never_says 'Kept your version of swarm'
 }
 
+fake_capture() {
+  local capture=$1 status=0 expected
+  shift
+  (load_fixture || exit 99; "$@") >"$dir/listing" 2>&1 || status=$?
+  expected=$(sed -n 's/^exit: //p' "$here/real-cli/$capture")
+  [[ $status == "$expected" ]] || fail "$capture exit $status differs from real exit $expected"
+  python3 "$here/check-cli-format.py" "$capture" "$dir/listing" "$home" "$old" || fail "$capture differs from real output"
+}
+
 test_fake_listings_match_real_captures() {
   setup cli-format clean
   : >"$dir/out"
@@ -1525,6 +1537,26 @@ test_fake_listings_match_real_captures() {
   python3 "$here/check-cli-format.py" codex-0.164.0-list-removed.txt "$dir/listing" "$home" "$old" || fail "Codex removed listing differs from its real capture"
   (load_fixture || exit 99; opencode plugin remove github:sandwichlegend/p3stack; opencode plugin list) >"$dir/listing"
   python3 "$here/check-cli-format.py" opencode-2.1.4-plugin-list.txt "$dir/listing" "$home" "$old" || fail "OpenCode removed listing differs from its real capture"
+  for tool in claude codex opencode cursor-agent; do
+    capture=$tool
+    case $tool in
+      claude) capture+=-2.1.310-marketplace-list.txt ;;
+      codex) capture+=-0.164.0-marketplace-list.txt ;;
+      opencode) capture+=-2.1.4-plugin-marketplace-list.txt ;;
+      cursor-agent) capture+=-2026.10.16-marketplace-list.txt ;;
+    esac
+    fake_capture "$capture" "$tool" plugin marketplace list
+  done
+  (load_fixture || exit 99; claude plugin marketplace remove p3stack; codex plugin marketplace remove p3stack)
+  for tool in claude codex opencode cursor-agent; do
+    case $tool in claude) version=2.1.310 ;; codex) version=0.164.0 ;; opencode) version=2.1.4 ;; cursor-agent) version=2026.10.16 ;; esac
+    fake_capture "$tool-$version-marketplace-list-empty.txt" "$tool" plugin marketplace list
+  done
+  (load_fixture || exit 99; P3STACK_FAKE_OPENCODE_STALE=empty opencode plugin list) >"$dir/listing"
+  python3 "$here/check-cli-format.py" opencode-2.1.4-list-observed-1.txt "$dir/listing" "$home" "$old" || fail 'OpenCode stale listing differs from capture'
+  rm -rf "$home/.codex"
+  fake_capture codex-0.164.0-list-missing-home.txt codex plugin list
+
 }
 
 test_fresh_codex_home_installs() {
@@ -1565,10 +1597,58 @@ test_opencode_stale_listing_retries_when_attended() {
   recorded opencode
 }
 
+test_opencode_stale_installed_listing_after_remove_stops() {
+  setup opencode-stale-remove clean
+  (load_fixture || exit 99; opencode plugin remove github:sandwichlegend/p3stack)
+  tools=opencode expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_OPENCODE_STALE=installed
+  record_is opencode "$old"
+  never_says '$ opencode plugin add'
+  never_says 'record was dropped'
+  says 'disagrees'
+}
+
+test_other_tools_late_edit_and_added_file_survive() {
+  local tool file trigger active
+  for tool in claude opencode; do
+    setup late-$tool clean
+    if [[ $tool == claude ]]; then
+      file=$claude_old/skills/poteto-mode/SKILL.md
+      active=$claude/skills/poteto-mode
+      trigger='plugin marketplace update p3stack'
+    else
+      active=$home/.cache/opencode/npm/git-p3stack-0123456789ab/0000000000001/node_modules/p3stack/p3stack/skills/poteto-mode
+      file=$active/SKILL.md
+      trigger='plugin add github:sandwichlegend/p3stack'
+    fi
+    echo INITIAL_USER_EDIT_R5 >>"$file"
+    mkdir -p "$dir/realbin"
+    cp "$here/fake-tool" "$dir/realbin/$tool"
+    rm "$dir/bin/$tool"
+    cat >"$dir/bin/$tool" <<WRAP
+#!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
+if [[ \$* == '$trigger' ]]; then
+  echo LATE_USER_EDIT_R5 >>'$file'
+  echo LATE_USER_FILE_R5 >'${file%/*}/mine.txt'
+fi
+exec '$dir/realbin/$tool' "\$@"
+WRAP
+    chmod +x "$dir/bin/$tool"
+    tools=$tool update_answering "" P3STACK_NONINTERACTIVE=1
+    has "$active/SKILL.md" INITIAL_USER_EDIT_R5
+    has "$active/SKILL.md" LATE_USER_EDIT_R5
+    has "$active/mine.txt" LATE_USER_FILE_R5
+    has "$(backup_for "$tool" skills/poteto-mode/SKILL.md)" LATE_USER_EDIT_R5
+    has "$(backup_for "$tool" skills/poteto-mode/mine.txt)" LATE_USER_FILE_R5
+  done
+}
+
 test_test_helpers_refuse_unsafe_home_and_missing_env() {
   setup guard clean
   local key before after
-  before=$(find "$home" -type f -exec sha256sum {} + | LC_ALL=C sort)
+  before=$(find "$home/" -type f -exec sha256sum {} + | LC_ALL=C sort)
   for key in HOME CLAUDE_CONFIG_DIR CODEX_HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME; do
     if (load_fixture || exit 99; export "$key=/home/liam"; bash "$here/fixtures.sh" clean "$dir") >"$dir/refused" 2>&1; then fail "fixtures accepted unsafe $key"; fi
     if (load_fixture || exit 99; export "$key=/home/liam"; "$dir/bin/codex" plugin list) >"$dir/refused" 2>&1; then fail "fake accepted unsafe $key"; fi
@@ -1578,7 +1658,7 @@ test_test_helpers_refuse_unsafe_home_and_missing_env() {
   mv "$dir/env.sh" "$dir/saved-env"
   if (load_fixture || exit 99; bash "$installer" update) >"$dir/refused" 2>&1; then fail 'missing env file did not stop execution'; fi
   mv "$dir/saved-env" "$dir/env.sh"
-  after=$(find "$home" -type f -exec sha256sum {} + | LC_ALL=C sort)
+  after=$(find "$home/" -type f -exec sha256sum {} + | LC_ALL=C sort)
   [[ $before == "$after" ]] || fail 'refused command changed the fixture home'
 }
 

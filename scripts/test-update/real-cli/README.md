@@ -11,3 +11,7 @@ OpenCode add and remove change configuration while retaining timestamped package
 Cursor Agent exposes marketplace commands, but listing marketplaces requires login. Its plugin command does not expose install, list, update, or remove. The installer manages Cursor's local folders itself.
 
 `fake_listings_match_real_captures` compares fake output to these captures, normalizing only HOME, commit IDs, and timestamps. The captures are evidence from real tools, not generated expected output.
+
+Round 5 adds fresh marketplace listings for all four tools, the Codex missing-home error, Codex marketplace file replacement, and OpenCode package folders before and after update. The Codex replacement probe writes a marker into the installed skill, upgrades the marketplace, and checks that the marker is gone. The OpenCode probe waits for its listing to catch up before update and observes the same package folder afterward.
+
+The test helpers require a temporary HOME and all config directories inside it. Fixtures accept only a new, empty temporary target, create their home with mktemp, and publish env.sh by atomic rename. Consumers check that file before sourcing it. Fake tools require the home marker written by the helper. A missing env file cannot fall back to the caller's home.

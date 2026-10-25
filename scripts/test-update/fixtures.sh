@@ -49,6 +49,13 @@ env_tmp=$(mktemp "$dir/.env.XXXXXXXX")
 environment >"$env_tmp"
 mv "$env_tmp" "$dir/env.sh"
 
+load_environment() {
+  [[ -s $dir/env.sh && ! -L $dir/env.sh ]] || { echo "refusing: missing fixture env file" >&2; exit 99; }
+  source "$dir/env.sh" || exit 99
+  [[ $HOME == "$dir/home" ]] || exit 99
+  python3 -I "$here/safe-home.py" check --owned || exit 99
+}
+
 skill() {
   mkdir -p "$release/$1"
   cat >"$release/$1/SKILL.md" <<EOF
@@ -100,8 +107,7 @@ command git init --quiet --bare --initial-branch=main "$origin"
 git push --quiet "$origin" main
 
 (
-  source "$dir/env.sh"
-  python3 -I "$here/safe-home.py" check --owned
+  load_environment
   P3STACK_NONINTERACTIVE=1 bash "$installer" install
 ) >"$dir/setup.log" 2>&1 || { cat "$dir/setup.log" >&2; exit 1; }
 
@@ -167,13 +173,13 @@ git push --quiet "$origin" main
 git rev-parse HEAD~1 HEAD >"$dir/releases"
 
 case $scenario in
-  auto-updated|stale-plugin) (source "$dir/env.sh"; python3 -I "$here/safe-home.py" check --owned; claude plugin update p3stack@p3stack) ;;
+  auto-updated|stale-plugin) (load_environment; claude plugin update p3stack@p3stack) ;;
   team-kit-auto-updated)
-    (source "$dir/env.sh"; python3 -I "$here/safe-home.py" check --owned; claude plugin update p3stack-team-kit@p3stack)
+    (load_environment; claude plugin update p3stack-team-kit@p3stack)
     echo "An edit made after the background auto-update." >>"$(installed claude-team-kit skills/deslop/SKILL.md)"
     ;;
   edit-after-failure)
-    (source "$dir/env.sh"; python3 -I "$here/safe-home.py" check --owned; P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_FAIL_AFTER_UPDATE=codex bash "$installer" update) >"$dir/failed-update.log" 2>&1 || true
+    (load_environment; P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_FAIL_AFTER_UPDATE=codex bash "$installer" update) >"$dir/failed-update.log" 2>&1 || true
     echo "An edit made after the failed update." >>"$(installed codex skills/poteto-mode/SKILL.md)"
     ;;
   tool-without-p3stack) mkdir -p "$home/.cursor" ;;

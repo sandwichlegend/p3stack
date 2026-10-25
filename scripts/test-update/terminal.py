@@ -4,6 +4,8 @@ import pty
 import select
 import sys
 
+sys.dont_write_bytecode = True
+
 from importlib.util import spec_from_file_location, module_from_spec
 from pathlib import Path
 spec = spec_from_file_location("safe_home", Path(__file__).with_name("safe-home.py"))

@@ -1,0 +1,4 @@
+$ codex plugin marketplace list
+No plugin marketplaces in scope.
+
+exit: 0

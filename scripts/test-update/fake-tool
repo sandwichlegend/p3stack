@@ -66,8 +66,12 @@ claude_put() {
 
 claude() {
   case "$*" in
-    "plugin marketplace "*)
-      [[ $3 != list ]] || printf 'Configured marketplaces:\n\n  ❯ anthropic-plugin-directory\n    Source: Built in (Anthropic Directory)\n\n  ❯ p3stack\n    Source: GitHub (sandwichlegend/p3stack)\n\n' ;;
+    "plugin marketplace add "*) mkdir -p "$claude_plugins"; touch "$claude_plugins/marketplace" ;;
+    "plugin marketplace remove "*) rm -f "$claude_plugins/marketplace" ;;
+    "plugin marketplace update "*) : ;;
+    "plugin marketplace list")
+      printf 'Configured marketplaces:\n\n  ❯ anthropic-plugin-directory\n    Source: Built in (Anthropic Directory)\n\n'
+      [[ ! -f $claude_plugins/marketplace ]] || printf '  ❯ p3stack\n    Source: GitHub (sandwichlegend/p3stack)\n\n' ;;
     "plugin install "*) grep -q "^${3%@*}	" "$claude_state" 2>/dev/null || claude_put "$3" ;;
     "plugin update "*) [[ ${P3STACK_FAKE_SKIP_UPDATE:-} == "${3%@*}" ]] || claude_put "$3";
       if [[ -n ${P3STACK_FAKE_REMOVE_AFTER_UPDATE:-} && $3 == p3stack@p3stack ]]; then
@@ -106,7 +110,9 @@ codex() {
           export_tree "$(git -C "$codex_market" rev-parse HEAD)" "$(subtree "${installed%@*}")" "$codex_home/plugins/cache/p3stack/${installed%@*}/1.0.0"
         done <"$codex_state"
       fi ;;
-    "plugin marketplace list") printf 'MARKETPLACE  ROOT\n'; [[ ! -d $codex_market ]] || printf 'p3stack      %s\n' "$codex_market" ;;
+    "plugin marketplace list")
+      if [[ -d $codex_market ]]; then printf 'MARKETPLACE  ROOT\np3stack      %s\n' "$codex_market"
+      else echo 'No plugin marketplaces in scope.'; fi ;;
     "plugin marketplace remove "*) rm -rf "$codex_market" ;;
     "plugin list --json")
       python3 -I - "$codex_state" "$codex_market" <<'JSON'
@@ -158,7 +164,9 @@ opencode_put() {
   sha=$(git --git-dir="$origin" rev-parse HEAD)
   mkdir -p "$opencode_cache" "$(dirname "$opencode_state")"
   printf '%s\n' "$sha" >"$opencode_state"
-  stamp=0000000000001
+  printf '%s\n' "$sha" >"$HOME/opencode-last-commit"
+  stamp=$(ls "$opencode_cache" | LC_ALL=C sort | tail -1)
+  stamp=${stamp:-0000000000001}
   if [[ ${P3STACK_FAKE_OPENCODE_NEW_FOLDER:-} == 1 ]]; then
     stamp=$(printf '%013d' $(($(ls "$opencode_cache" | wc -l) + 1)))
   fi
@@ -171,6 +179,32 @@ opencode_put() {
 opencode() {
   case "$*" in
     --version) echo 2.1.4 ;;
+    "plugin marketplace "*) cat <<'HELP'
+DESCRIPTION
+  Manage plugins
+
+USAGE
+  opencode plugin <subcommand> [flags]
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+  --print-logs                                                        Print logs to stderr (server logs require --standalone)
+
+SUBCOMMANDS
+  list      List plugins
+  add       Install a plugin and add it to the global configuration
+  check     Check package plugins for updates
+  update    Update package plugins
+  remove    Remove a plugin from global configuration
+
+ERROR
+  Unknown subcommand "marketplace" for "opencode plugin"
+HELP
+      return 1 ;;
     "plugin add "*) [[ -f $opencode_state ]] || opencode_put ;;
     "plugin update "*) opencode_put ;;
     "plugin remove "*) rm -f "$opencode_state"; printf '{"plugins":[]}\n' >"$(dirname "$opencode_state")/opencode.json" ;;
@@ -179,6 +213,10 @@ opencode() {
       [[ ! -f $HOME/opencode-list-count ]] || count=$(cat "$HOME/opencode-list-count")
       count=$((count+1)); echo "$count" >"$HOME/opencode-list-count"
       if [[ ${P3STACK_FAKE_OPENCODE_STALE:-} == empty && $count -le ${P3STACK_FAKE_OPENCODE_STALE_CALLS:-99999} ]]; then echo 'No plugins found'; return; fi
+      if [[ ${P3STACK_FAKE_OPENCODE_STALE:-} == installed && $count -le ${P3STACK_FAKE_OPENCODE_STALE_CALLS:-99999} ]]; then
+        printf 'ID       VERSION  SOURCE\np3stack  %.7s  github:sandwichlegend/p3stack\n' "$(cat "$HOME/opencode-last-commit")"
+        return
+      fi
       if [[ -f $opencode_state ]]; then
         printf 'ID       VERSION  SOURCE\np3stack  %.7s  github:sandwichlegend/p3stack\n' "$(cat "$opencode_state")"
       else echo 'No plugins found'; fi ;;
@@ -189,5 +227,11 @@ opencode() {
 
 case $tool in
   claude|codex|opencode) "$tool" "$@" ;;
+  cursor-agent)
+    if [[ $* == 'plugin marketplace list' ]]; then
+      echo "Error: Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN." >&2
+      exit 1
+    fi
+    act_as_merge_agent "$@" ;;
   *) act_as_merge_agent "$@" ;;
 esac
