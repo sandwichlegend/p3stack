@@ -34,9 +34,20 @@ export async function verifyHttp() {
     const link = logs.join("\n").match(/https:\/\/fixture\.tailnet\.ts\.net\/\?token=([^\s]+)/)[0]
     const token = new URL(link).searchParams.get("token")
     assert.equal(logs.length, 1)
-    assert.equal(logs[0].split(token).length, 2, "startup prints the token once")
-    assert.equal((await request("/?query=works")).status, 200)
-    assert.equal((await request("/scenarios?query=works")).status, 200)
+    const spoofed = { Host: new URL(sandbox.origin).host }
+    for (const path of ["/", "/scenarios", "/client.mjs"]) {
+      assert.equal((await request(path, { headers: spoofed })).status, 403, `loopback ${path} without a token`)
+    }
+    assert.equal((await request("/sessions", { method: "POST", headers: spoofed, body: '{"scenario":"clean"}' })).status, 403)
+    assert(logs[0].includes(`${sandbox.origin}/?token=${token}`), "startup prints the loopback link with its token")
+    assert.equal(logs[0].split(token).length, 3, "startup prints the token only in its two links")
+    const local = await request(`/?token=${token}&keep=yes`)
+    assert.equal(local.status, 302)
+    const localCookie = local.headers.get("set-cookie")
+    assert(!localCookie.includes("Secure"), "the loopback cookie works over plain HTTP")
+    const signedIn = { Cookie: localCookie.split(";")[0] }
+    assert.equal((await request("/?query=works", { headers: signedIn })).status, 200)
+    assert.equal((await request("/scenarios?query=works", { headers: signedIn })).status, 200)
     for (const headers of [
       { Host: "evil.invalid" }, { Host: "fixture.tailnet.ts.net.evil.invalid" },
       { Origin: "https://evil.invalid" }, { Origin: "https://fixture.tailnet.ts.net" },
@@ -64,30 +75,36 @@ export async function verifyHttp() {
     assert.equal((await request(`/sessions/${remoteId}`, { method: "DELETE", headers: remote })).status, 403)
     assert.equal((await request(`/sessions/${remoteId}?query=works`, { method: "DELETE", headers: authenticated })).status, 200)
     const results = await Promise.all(Array.from({ length: 10 }, () => request("/sessions", {
-      method: "POST", body: '{"scenario":"clean"}',
+      method: "POST", headers: signedIn, body: '{"scenario":"clean"}',
     })))
     assert.equal(results.filter((res) => res.status === 201).length, 8, "cap includes preparations in flight")
     assert.equal(results.filter((res) => res.status === 429).length, 2)
     for (const res of results.filter((res) => res.status === 201)) {
       const { id } = await res.json()
-      assert.equal((await request(`/sessions/${id}`, { method: "DELETE" })).status, 200)
+      assert.equal((await request(`/sessions/${id}`, { method: "DELETE", headers: signedIn })).status, 200)
     }
   } finally { await sandbox.stop() }
 
-  const rate = await startSandbox({ port: 0, sandboxUrl: "", createLimit: 2, rateWindowMs: 80, log() {} })
+  const rate = await startSandbox({ port: 0, sandboxUrl: "", createLimit: 2, rateWindowMs: 1000, log() {} })
   try {
-    const create = () => fetch(`${rate.origin}/sessions`, { method: "POST", body: '{"scenario":"unknown"}' })
-    assert.equal((await create()).status, 400)
-    assert.equal((await create()).status, 400)
-    const rejected = await create()
-    assert.equal(rejected.status, 429)
-    assert(rejected.headers.has("retry-after"))
-    await delay(100)
-    assert.equal((await create()).status, 400)
+    const create = (body) => fetch(`${rate.origin}/sessions`, { method: "POST", body })
+    for (const body of ['{"scenario":"unknown"}', '{"scenario":"unknown"}', '{"scenario":"unknown"}', "not json", "null", "[]"]) {
+      assert.equal((await create(body)).status, 400, `${body} is rejected without counting against the limit`)
+    }
+    const burst = await Promise.all([1, 2, 3].map(() => create('{"scenario":"clean"}')))
+    assert.deepEqual(burst.map((res) => res.status).sort(), [201, 201, 429])
+    assert(burst.find((res) => res.status === 429).headers.has("retry-after"))
+    await delay(1100)
+    const later = await create('{"scenario":"clean"}')
+    assert.equal(later.status, 201, "the window frees up")
+    for (const res of [...burst, later].filter((res) => res.status === 201)) {
+      const { id } = await res.json()
+      assert.equal((await fetch(`${rate.origin}/sessions/${id}`, { method: "DELETE" })).status, 200)
+    }
     assert.equal((await rawRequest(rate.origin, "/", { headers: { Host: "fixture.tailnet.ts.net" } })).status, 403)
   } finally { await rate.stop() }
 
-  const idle = await startSandbox({ port: 0, sandboxUrl: "", idleMs: 700, log() {} })
+  const idle = await startSandbox({ port: 0, sandboxUrl: "", idleMs: 1500, log() {} })
   const abort = new AbortController()
   try {
     const created = await fetch(`${idle.origin}/sessions`, { method: "POST", body: '{"scenario":"clean"}' })
@@ -113,16 +130,16 @@ export async function verifyHttp() {
     }
     await wait("/sandbox/work $ ")
     const input = (data) => fetch(`${idle.origin}/sessions/${id}/input`, { method: "POST", body: JSON.stringify({ data }) })
-    assert.equal((await input("for i in 1 2 3 4; do echo OUTPUT_ALIVE; sleep 0.3; done\r")).status, 200)
-    await wait("OUTPUT_ALIVE\r\nOUTPUT_ALIVE\r\nOUTPUT_ALIVE\r\nOUTPUT_ALIVE\r\n")
-    await delay(350)
+    assert.equal((await input("for i in 1 2 3 4 5 6 7 8; do echo OUTPUT_ALIVE; sleep 0.3; done\r")).status, 200)
+    await wait("OUTPUT_ALIVE\r\n".repeat(8))
+    await delay(300)
     assert.equal((await input("echo INPUT_ALIVE\r")).status, 200, "output refreshes idle expiry")
     await wait("INPUT_ALIVE\r\n")
-    await delay(350)
+    await delay(700)
     assert.equal((await input("\r")).status, 200, "input refreshes idle expiry")
-    await delay(1000)
+    await delay(2500)
     assert.equal((await fetch(`${idle.origin}/sessions/${id}`, { method: "DELETE" })).status, 404, "idle shell expires")
     await reading
   } finally { abort.abort(); await idle.stop() }
-  console.log("HTTP: Host, Origin, token, cookie, query routes, concurrent cap, rate limit, and idle activity passed")
+  console.log("HTTP: Host, Origin, token on every request, cookie, query routes, concurrent cap, rate limit, request bodies, and idle activity passed")
 }

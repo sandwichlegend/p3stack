@@ -25,6 +25,8 @@ const answers = {
   interrupted: [["Choose K/A/T", "k"]],
   "removed-file": [["Choose K/A", "a"], ["Choose K/A", "k"]],
   "auto-updated": [["Choose K/A/T", "k"]],
+  "edit-after-failure": [["Choose K/A/T", "k"]],
+  "team-kit-auto-updated": [["Choose A/O/T", "a"]],
 }
 const expected = {
   clean: "No edited files.", kept: "Kept your version of poteto-mode.",
@@ -32,11 +34,19 @@ const expected = {
   hand: "Marked it edited.", nobody: "No one is at the keyboard to choose",
   removed: "Moved your recall to ~/.agents/skills/recall", first: "Installed p3stack's versions.",
   script: "Installed the merged poteto-mode/scripts/watch-pr/github.ts",
-  interrupted: "Finished an interrupted update",
+  interrupted: "Your files in Codex are as they were before this update.",
   added: "Kept your file skills/poteto-mode/references/mine.md.",
-  "removed-file": "Kept your version of recall/references/notes.md.",
+  "removed-file": "Kept your file skills/recall/references/notes.md.",
   "auto-updated": "Kept your version of poteto-mode.",
   "stale-plugin": "No edited files.",
+  "edit-after-failure": "Kept your version of poteto-mode.",
+  "team-kit-auto-updated": "Kept your version of deslop.",
+  "tool-without-p3stack": "Kept your version of poteto-mode.",
+}
+const files = {
+  "edit-after-failure": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "An edit made after the failed update."],
+  "team-kit-auto-updated": ["home/.claude/plugins/cache/p3stack/p3stack-team-kit", "An edit made after the background auto-update."],
+  "tool-without-p3stack": ["home/.cursor/plugins/local/p3stack/skills/poteto-mode/SKILL.md", "name: poteto-mode"],
 }
 try {
   for (const scenario of scenarios) {
@@ -81,6 +91,12 @@ try {
       }
       assert(output.includes(expected[scenario.id]), output)
       assert(output.includes("\r\nUPDATE_EXIT=0\r\n"), output)
+      if (files[scenario.id]) {
+        const [path, text] = files[scenario.id]
+        const found = execFileSync("grep", ["-rlF", text, `${dir}/work/${path}`], { encoding: "utf8" })
+        assert(found.trim(), `${scenario.id}: ${path} lacks ${text}`)
+      }
+      if (scenario.id === "tool-without-p3stack") assert(!output.includes("Using the commit Cursor installed"), output)
       if (scenario.id === "both" || scenario.id === "script") {
         const folder = scenario.id === "both" ? "poteto-mode/SKILL.md" : "poteto-mode/scripts/watch-pr/github.ts"
         const extension = scenario.id === "both" ? "md" : "ts"
