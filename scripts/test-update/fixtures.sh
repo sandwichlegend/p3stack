@@ -35,12 +35,13 @@ esac
 for tool in $tools; do ln -s "$here/fake-tool" "$dir/bin/$tool"; done
 
 environment() {
-  cat <<EOF
-export HOME='$home' TMPDIR='$home/tmp'
-export P3STACK_TEST_HELPER='$here'
-export PATH='$dir/bin:$dir/sys'
-export P3STACK_REPO_URL='$origin'
-export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache' XDG_CONFIG_HOME='$home/.config' XDG_DATA_HOME='$home/.local/share' XDG_STATE_HOME='$home/.local/state'
+  printf 'export %s=%q\n' \
+    HOME "$home" TMPDIR "$home/tmp" P3STACK_TEST_HELPER "$here" \
+    PATH "$dir/bin:$dir/sys" P3STACK_REPO_URL "$origin" \
+    CLAUDE_CONFIG_DIR "$home/.claude" CODEX_HOME "$home/.codex" \
+    XDG_CACHE_HOME "$home/.cache" XDG_CONFIG_HOME "$home/.config" \
+    XDG_DATA_HOME "$home/.local/share" XDG_STATE_HOME "$home/.local/state"
+  cat <<'EOF'
 unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE P3STACK_FAKE_RELEASE_DURING_UPDATE P3STACK_FAKE_LATE_EDIT
 EOF
   [[ $scenario != released-while-choosing ]] || echo "export P3STACK_FAKE_RELEASE_DURING_UPDATE=1"
