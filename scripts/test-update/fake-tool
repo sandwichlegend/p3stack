@@ -81,10 +81,20 @@ codex_home=${CODEX_HOME:-$HOME/.codex}
 codex_market=$codex_home/.tmp/marketplaces/p3stack
 codex_state=$codex_home/plugins/installed.txt
 
+publish_during_choice() {
+  [[ ${P3STACK_FAKE_RELEASE_DURING_UPDATE:-} == 1 && ! -f $HOME/.p3stack/fixture-release-published ]] || return 0
+  local release
+  release=$(dirname "$origin")/release
+  echo "A newer p3stack release arrived during your choice." >>"$release/p3stack/skills/poteto-mode/SKILL.md"
+  git -C "$release" -c user.name=fixture -c user.email=fixture@example.com commit --quiet -am "Release during choice"
+  git -C "$release" push --quiet "$origin" main
+  touch "$HOME/.p3stack/fixture-release-published"
+}
+
 codex() {
   case "$*" in
     "plugin marketplace add "*) [[ -d $codex_market ]] || git clone --quiet "$origin" "$codex_market" ;;
-    "plugin marketplace upgrade "*) git -C "$codex_market" pull --quiet --ff-only ;;
+    "plugin marketplace upgrade "*) publish_during_choice; git -C "$codex_market" pull --quiet --ff-only ;;
     "plugin marketplace list") printf 'MARKETPLACE  ROOT\n'; [[ ! -d $codex_market ]] || printf 'p3stack      %s\n' "$codex_market" ;;
     "plugin marketplace remove "*) rm -rf "$codex_market" ;;
     "plugin list") [[ ! -f $codex_state ]] || cat "$codex_state" ;;

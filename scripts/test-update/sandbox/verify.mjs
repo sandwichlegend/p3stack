@@ -23,6 +23,7 @@ const answers = {
   first: [["Choose K/A", "a"]],
   script: [["Choose K/A/T", "t"], ["Choose 1", "1"]],
   interrupted: [["Choose K/A/T", "k"]],
+  "released-while-choosing": [["Choose K/A/T", "k"]],
   "removed-file": [["Choose K/A", "a"], ["Choose K/A", "k"]],
   "auto-updated": [["Choose K/A/T", "k"]],
   "edit-after-failure": [["Choose K/A/T", "k"]],
@@ -34,16 +35,19 @@ const expected = {
   hand: "Marked it edited.", nobody: "No one is at the keyboard to choose",
   removed: "Moved your recall to ~/.agents/skills/recall", first: "Installed p3stack's versions.",
   script: "Installed the merged poteto-mode/scripts/watch-pr/github.ts",
-  interrupted: "Your files in Codex are as they were before this update.",
+  interrupted: "Codex's update didn't finish. Your backed-up files were reconciled",
   added: "Kept your file skills/poteto-mode/references/mine.md.",
   "removed-file": "Kept your file skills/recall/references/notes.md.",
   "auto-updated": "Kept your version of poteto-mode.",
   "stale-plugin": "No edited files.",
   "edit-after-failure": "Kept your version of poteto-mode.",
   "team-kit-auto-updated": "Kept your version of deslop.",
+  "released-while-choosing": "p3stack released again while you were choosing",
+  "removed-through-tool": "isn't installed in Claude Code",
   "tool-without-p3stack": "Kept your version of poteto-mode.",
 }
 const files = {
+  "released-while-choosing": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "Write the code test first."],
   "edit-after-failure": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "An edit made after the failed update."],
   "team-kit-auto-updated": ["home/.claude/plugins/cache/p3stack/p3stack-team-kit", "An edit made after the background auto-update."],
   "tool-without-p3stack": ["home/.cursor/plugins/local/p3stack/skills/poteto-mode/SKILL.md", "name: poteto-mode"],
@@ -95,6 +99,19 @@ try {
         const [path, text] = files[scenario.id]
         const found = execFileSync("grep", ["-rlF", text, `${dir}/work/${path}`], { encoding: "utf8" })
         assert(found.trim(), `${scenario.id}: ${path} lacks ${text}`)
+      }
+      if (scenario.id === "released-while-choosing") {
+        const bases = await readFile(`${dir}/work/home/.p3stack/installed/codex/bases`, "utf8")
+        const [old] = (await readFile(`${dir}/work/releases`, "utf8")).split("\n")
+        assert(bases.includes(old), "the kept edit retains its earlier base")
+        assert(!output.includes("You changed poteto-mode again"), output)
+      }
+      if (scenario.id === "removed-through-tool") {
+        const saved = execFileSync("grep", ["-rlF", "Write the code test first.", `${dir}/work/home/.p3stack/edits/claude`], { encoding: "utf8" })
+        assert(saved.trim(), "the removed plugin's leftover edit stays backed up")
+        const listing = await readFile(`${dir}/work/home/.claude/plugins/installed.tsv`, "utf8")
+        assert(listing.includes("p3stack-team-kit"), "the tool lists both plugins after reinstall")
+        assert(!output.includes("Choose K/A"), output)
       }
       if (scenario.id === "tool-without-p3stack") assert(!output.includes("Using the commit Cursor installed"), output)
       if (scenario.id === "both" || scenario.id === "script") {

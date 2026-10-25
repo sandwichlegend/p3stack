@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin edit-after-failure team-kit-auto-updated tool-without-p3stack"
+scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin edit-after-failure team-kit-auto-updated tool-without-p3stack released-while-choosing removed-through-tool"
 scenario=${1:-}
 [[ " $scenarios " == *" $scenario "* && -n ${2:-} ]] || { echo "usage: fixtures.sh <$(tr ' ' '|' <<<"$scenarios")> <dir>" >&2; exit 2; }
 
@@ -22,7 +22,7 @@ done
 
 case $scenario in
   added) tools="codex cursor-agent" ;;
-  interrupted|edit-after-failure) tools="codex" ;;
+  interrupted|edit-after-failure|released-while-choosing) tools="codex" ;;
   removed) tools="claude codex opencode" ;;
   clean) tools="claude codex cursor-agent opencode" ;;
   copy|both|nobody|first) tools="claude codex" ;;
@@ -36,8 +36,9 @@ export HOME='$home'
 export PATH='$dir/bin:$dir/sys'
 export P3STACK_REPO_URL='$origin'
 export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache'
-unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE
+unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE P3STACK_FAKE_RELEASE_DURING_UPDATE
 EOF
+  [[ $scenario != released-while-choosing ]] || echo "export P3STACK_FAKE_RELEASE_DURING_UPDATE=1"
 }
 
 skill() {
@@ -133,9 +134,9 @@ case $scenario in
     change p3stack/skills/poteto-mode/SKILL.md
     rm -rf "$home/.p3stack/installed"
     ;;
-  interrupted|edit-after-failure) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  interrupted|edit-after-failure|released-while-choosing) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
   team-kit-auto-updated) edit claude-team-kit skills/deslop/SKILL.md 1 ;;
-  tool-without-p3stack) edit claude skills/poteto-mode/SKILL.md 1 ;;
+  removed-through-tool|tool-without-p3stack) edit claude skills/poteto-mode/SKILL.md 1 ;;
   added)
     for root in "$home/.codex/plugins/cache/p3stack/p3stack/1.0.0" "$home/.cursor/plugins/local/p3stack"; do
       mkdir -p "$root/skills/poteto-mode/references"
@@ -165,6 +166,9 @@ case $scenario in
   edit-after-failure)
     (eval "$(environment)"; P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_FAIL_AFTER_UPDATE=codex bash "$installer" update) >"$dir/failed-update.log" 2>&1 || true
     echo "An edit made after the failed update." >>"$(installed codex skills/poteto-mode/SKILL.md)"
+    ;;
+  removed-through-tool)
+    (eval "$(environment)"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
     ;;
   tool-without-p3stack) mkdir -p "$home/.cursor" ;;
 esac

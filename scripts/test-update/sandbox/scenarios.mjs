@@ -16,4 +16,6 @@ export const scenarios = [
   { id: "edit-after-failure", description: "A Codex update failed, then you edited the restored skill again.", try: "Update and choose K. Both of your edits should stay, and both are backed up." },
   { id: "team-kit-auto-updated", description: "Claude auto-updated only team-kit; you edited deslop before and after.", try: "Update. Pick A to keep the newer edit, or O for the older one. Both stay backed up." },
   { id: "tool-without-p3stack", description: "Cursor is present but never had p3stack; Claude has your edit.", try: "Update. Cursor gets a plain install, and your Claude edit stays." },
+  { id: "released-while-choosing", description: "p3stack releases again after you choose and before Codex installs.", try: "Choose K. Your edit stays. Update again and choose A to take the newer release." },
+  { id: "removed-through-tool", description: "You removed both plugins through Claude Code; an edited cache and install record remain.", try: "Update. Claude Code reinstalls, and your leftover edit stays backed up without a choice." },
 ]
