@@ -24,6 +24,9 @@ if name.startswith('claude'):
     text = re.sub(r'Version: [0-9a-f]{12}', 'Version: <COMMIT>', text)
     actual = re.sub(r'Version: [0-9a-f]{12}', 'Version: <COMMIT>', actual)
 if name.startswith('opencode'):
+    if name.endswith('update-package-folders.txt'):
+        text = re.sub(r'git-p3stack-[0-9a-f]+/[0-9]+', 'git-p3stack-<PACKAGE>/<STAMP>', text)
+        actual = re.sub(r'git-p3stack-[0-9a-f]+/[0-9]+', 'git-p3stack-<PACKAGE>/<STAMP>', actual)
     text = re.sub(r'(p3stack  )[0-9a-f]{7}', r'\1<COMMIT>', text)
     actual = re.sub(r'(p3stack  )[0-9a-f]{7}', r'\1<COMMIT>', actual)
 assert text == actual, f'{name}\nexpected:\n{text}\nactual:\n{actual}'
