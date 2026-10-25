@@ -921,6 +921,220 @@ test_merge_folder_keeps_one_previous_result() {
   has "$merge/result.previous.md" "last result"
 }
 
+
+release_while_choosing() {
+  echo "RELEASE_THREE" >>"$dir/release/p3stack/skills/poteto-mode/SKILL.md"
+  git -C "$dir/release" -c user.name=fixture -c user.email=fixture@example.com commit --quiet -am "Release 3"
+  third=$(git -C "$dir/release" rev-parse HEAD)
+  mkdir -p "$dir/real"
+  cp "$here/fake-tool" "$dir/real/codex"
+  rm "$dir/bin/codex"
+  cat >"$dir/bin/codex" <<EOF
+#!/usr/bin/env bash
+if [[ \$* == 'plugin marketplace upgrade p3stack' && ! -f '$dir/pushed' ]]; then
+  git -C '$dir/release' push --quiet '$dir/origin.git' main || exit 1
+  touch '$dir/pushed'
+fi
+exec '$dir/real/codex' "\$@"
+EOF
+  chmod +x "$dir/bin/codex"
+}
+
+test_release_during_choices_keeps_user_version() {
+  setup release-race-keep interrupted
+  release_while_choosing
+  tools=codex update_answering "k\n"
+  has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
+  lacks "$codex/skills/poteto-mode/SKILL.md" RELEASE_THREE
+  record_is codex "$third"
+  has "$home/.p3stack/installed/codex/bases" "$old"
+  never_says "You changed poteto-mode again"
+  says "p3stack released again while you were choosing"
+  tools=codex update_answering "a\n"
+  asked 1
+  is_release "$third" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+}
+
+test_release_during_choices_accepts_actual_release() {
+  setup release-race-accept interrupted
+  release_while_choosing
+  tools=codex update_answering "a\n"
+  is_release "$third" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+  never_says "You changed poteto-mode again"
+  [[ -z $(grep -rl RELEASE_THREE "$home/.p3stack/edits/codex") ]] || fail "release content was backed up as a user edit"
+  record_is codex "$third"
+}
+
+test_release_during_choices_keeps_merge_and_its_base() {
+  setup release-race-merge interrupted
+  release_while_choosing
+  tools=codex update_answering "t\n1\n" P3STACK_FAKE_MERGE=MERGED_CHOICE
+  has "$codex/skills/poteto-mode/SKILL.md" MERGED_CHOICE
+  has "$home/.p3stack/installed/codex/bases" "$new"
+  never_says "You changed poteto-mode again"
+  tools=codex update_answering "a\n"
+  asked 1
+  is_release "$third" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+}
+
+fail_cursor_copy() {
+  local subtree=$1 real_cp
+  real_cp=$(command -v cp)
+  cat >"$dir/bin/cp" <<EOF
+#!/usr/bin/env bash
+case "\$*" in *'/.p3stack/repo/$subtree '*) echo injected copy failure >&2; exit 1 ;; esac
+exec '$real_cp' "\$@"
+EOF
+  chmod +x "$dir/bin/cp"
+}
+
+test_missing_root_rescans_surviving_folders() {
+  setup missing-survivor added
+  local cursor=$home/.cursor/plugins/local team=$home/.cursor/plugins/local/p3stack-team-kit/skills/deslop/SKILL.md
+  echo PRE_TEAM_EDIT >>"$team"
+  fail_cursor_copy team-kit
+  tools=cursor expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  rm "$dir/bin/cp"
+  echo LATE_SURVIVOR_EDIT >>"$cursor/p3stack/skills/poteto-mode/SKILL.md"
+  echo LATE_SURVIVOR_FILE >"$cursor/p3stack/skills/poteto-mode/mine.txt"
+  tools=cursor update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$cursor/p3stack/skills/poteto-mode/SKILL.md" LATE_SURVIVOR_EDIT
+  has "$cursor/p3stack/skills/poteto-mode/mine.txt" LATE_SURVIVOR_FILE
+  has "$team" PRE_TEAM_EDIT
+  [[ -n $(grep -rl LATE_SURVIVOR_EDIT "$home/.p3stack/edits/cursor") ]] || fail "survivor's edit has no backup"
+  [[ -n $(grep -rl LATE_SURVIVOR_FILE "$home/.p3stack/edits/cursor") ]] || fail "survivor's added file has no backup"
+  recorded cursor
+}
+
+change_swarm_again() { echo RELEASE_THREE >>"$1/p3stack/skills/swarm/SKILL.md"; }
+
+test_missing_root_new_release_keeps_original_edit() {
+  setup missing-new-release added
+  local file=$home/.cursor/plugins/local/p3stack/skills/swarm/SKILL.md
+  echo MY_CURSOR_EDIT >>"$file"
+  fail_cursor_copy p3stack
+  tools=cursor expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  rm "$dir/bin/cp"
+  local third
+  third=$(push_release change_swarm_again)
+  tools=cursor update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$file" MY_CURSOR_EDIT
+  lacks "$file" RELEASE_THREE
+  record_is cursor "$third"
+  tools=cursor update_answering "a\n"
+  asked 1
+  is_release "$third" "$file" skills/swarm/SKILL.md
+}
+
+test_failed_update_new_release_rescans_original_edit() {
+  setup failed-new-release added
+  local team=$home/.cursor/plugins/local/p3stack-team-kit/skills/deslop/SKILL.md
+  echo MY_TEAM_EDIT >>"$team"
+  fail_cursor_copy p3stack
+  tools=cursor expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  rm "$dir/bin/cp"
+  local third
+  third=$(push_release change_deslop_again)
+  tools=cursor update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$team" MY_TEAM_EDIT
+  record_is cursor "$third"
+  has "$home/.p3stack/installed/cursor/bases" "$old"
+  tools=cursor update_answering "a\n"
+  asked 1
+  cmp -s <(git --git-dir="$dir/origin.git" show "$third:team-kit/skills/deslop/SKILL.md") "$team" || fail "Accept didn't install release 3"
+}
+
+test_stale_replay_rolls_back_then_scans() {
+  setup stale-replay interrupted
+  stop_at_record_write
+  tools=codex expect_failure=1 update_answering "a\n"
+  rm "$dir/bin/cp"
+  local third
+  third=$(push_release change_deslop_again)
+  (eval "$(cat "$dir.env")"; codex plugin marketplace upgrade p3stack; codex plugin add p3stack@p3stack; codex plugin add p3stack-team-kit@p3stack)
+  tools=codex update_answering "a\n"
+  asked 1
+  says "you and p3stack both changed this skill"
+  is_release "$third" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+  record_is codex "$third"
+}
+
+test_replay_pre_update_content_stays_an_open_question() {
+  setup replay-pre-question both
+  stop_at_record_write
+  tools=claude expect_failure=1 update_answering "a\n"
+  rm "$dir/bin/cp"
+  cp "$claude_old/skills/poteto-mode/SKILL.md" "$claude/skills/poteto-mode/SKILL.md"
+  tools=claude update_answering "a\n"
+  asked 1
+  says "you and p3stack both changed this skill"
+  never_says "You changed poteto-mode again"
+  never_says "Your edits are restored."
+  is_release "$new" "$claude/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+}
+
+test_claude_uninstalled_through_tool_ignores_leftovers() {
+  setup uninstalled-claude both
+  (eval "$(cat "$dir.env")"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+  tools=claude action=install update_answering ""
+  asked 0
+  recorded claude
+  is_release "$new" "$claude/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+  has "$(backup_for claude skills/poteto-mode/SKILL.md)" "Write the code test first."
+  says "isn't installed in Claude Code"
+}
+
+test_claude_uninstalled_without_record_backs_up_cache() {
+  setup uninstalled-no-record both
+  rm -rf "$home/.p3stack/installed/claude"
+  (eval "$(cat "$dir.env")"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+  tools=claude action=install update_answering ""
+  asked 0
+  recorded claude
+  has "$(backup_for claude skills/poteto-mode/SKILL.md)" "Write the code test first."
+}
+
+test_codex_uninstalled_through_tool_drops_record() {
+  setup uninstalled-codex copy
+  (eval "$(cat "$dir.env")"; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack)
+  tools=codex update_answering ""
+  asked 0
+  recorded codex
+  is_release "$new" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+  says "isn't installed in Codex"
+}
+
+test_unknown_base_historical_release_still_asks() {
+  setup unknown-historical clean
+  rm -rf "$home/.p3stack/installed/codex"
+  tools=codex update_answering "a\n"
+  asked 1
+  says "No record of the last install"
+  has "$(backup_for codex skills/deslop/SKILL.md)" "Pause before deploys."
+  recorded codex
+}
+
+test_uninstall_failure_keeps_journal_and_sources() {
+  setup failed-uninstall interrupted
+  stop_at_record_write
+  tools=codex expect_failure=1 update_answering "t\n1\n" P3STACK_FAKE_MERGE=JOURNAL_MERGE
+  rm "$dir/bin/cp"
+  mkdir -p "$dir/real"
+  cp "$here/fake-tool" "$dir/real/codex"
+  rm "$dir/bin/codex"
+  cat >"$dir/bin/codex" <<EOF
+#!/usr/bin/env bash
+[[ \$* != 'plugin remove p3stack-team-kit@p3stack' ]] || exit 1
+exec '$dir/real/codex' "\$@"
+EOF
+  chmod +x "$dir/bin/codex"
+  tools=codex action=uninstall expect_failure=1 update_answering ""
+  exists "$home/.p3stack/pending/codex/rows"
+  has "$home/.p3stack/pending/codex/sources/p3stack/skills/poteto-mode/SKILL.md" JOURNAL_MERGE
+  says "uninstall failed"
+  never_says "Dropped the unfinished"
+}
+
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
 for name in ${*:-$cases}; do
   case_failed=0
