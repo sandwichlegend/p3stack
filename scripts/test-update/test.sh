@@ -10,6 +10,8 @@ scratch=$(mktemp -d /tmp/p3stack-tests.XXXXXXXX)
 bootstrap=$(python3 -I "$here/safe-home.py" create "$scratch")
 export HOME=$bootstrap CLAUDE_CONFIG_DIR=$bootstrap/.claude CODEX_HOME=$bootstrap/.codex
 export XDG_CONFIG_HOME=$bootstrap/.config XDG_DATA_HOME=$bootstrap/.local/share XDG_CACHE_HOME=$bootstrap/.cache XDG_STATE_HOME=$bootstrap/.local/state
+mkdir -p "$HOME/tmp"
+export TMPDIR=$HOME/tmp
 trap 'rm -rf "$scratch"' EXIT
 failures=0
 case_failed=0

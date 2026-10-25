@@ -17,7 +17,7 @@ ln -s "${created_home##*/}" "$dir/home"
 home=$dir/home
 release=$dir/release
 origin=$dir/origin.git
-mkdir -p "$home/.codex" "$dir/bin" "$dir/sys"
+mkdir -p "$home/.codex" "$home/tmp" "$dir/bin" "$dir/sys"
 
 for command in bash env git tar awk sed grep sha256sum shasum find sort diff cp mv rm mkdir cat ln ls head tail tr cut \
   dirname basename mktemp touch chmod wc uname paste readlink sleep date python3 xcode-select kill cmp rmdir ps; do
@@ -36,7 +36,7 @@ for tool in $tools; do ln -s "$here/fake-tool" "$dir/bin/$tool"; done
 
 environment() {
   cat <<EOF
-export HOME='$home'
+export HOME='$home' TMPDIR='$home/tmp'
 export P3STACK_TEST_HELPER='$here'
 export PATH='$dir/bin:$dir/sys'
 export P3STACK_REPO_URL='$origin'
