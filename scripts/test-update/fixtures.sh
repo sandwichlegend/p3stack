@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin"
+scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin edit-after-failure team-kit-auto-updated tool-without-p3stack"
 scenario=${1:-}
 [[ " $scenarios " == *" $scenario "* && -n ${2:-} ]] || { echo "usage: fixtures.sh <$(tr ' ' '|' <<<"$scenarios")> <dir>" >&2; exit 2; }
 
@@ -16,13 +16,14 @@ rm -rf "$home" "$release" "$origin" "$dir/bin" "$dir/sys"
 mkdir -p "$home" "$dir/bin" "$dir/sys"
 
 for command in bash env git tar awk sed grep sha256sum shasum find sort diff cp mv rm mkdir cat ln ls head tail tr cut \
-  dirname basename mktemp touch chmod wc uname paste readlink sleep date python3 xcode-select kill cmp rmdir; do
+  dirname basename mktemp touch chmod wc uname paste readlink sleep date python3 xcode-select kill cmp rmdir ps; do
   path=$(command -v "$command" 2>/dev/null) && ln -s "$path" "$dir/sys/$command"
 done
 
 case $scenario in
   added) tools="codex cursor-agent" ;;
-  interrupted) tools="codex" ;;
+  interrupted|edit-after-failure) tools="codex" ;;
+  removed) tools="claude codex opencode" ;;
   clean) tools="claude codex cursor-agent opencode" ;;
   copy|both|nobody|first) tools="claude codex" ;;
   *) tools="claude" ;;
@@ -35,7 +36,7 @@ export HOME='$home'
 export PATH='$dir/bin:$dir/sys'
 export P3STACK_REPO_URL='$origin'
 export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache'
-unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON
+unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE
 EOF
 }
 
@@ -98,6 +99,7 @@ installed() {
   local tool=$1 path=$2
   case $tool in
     claude) echo "$home/.claude/plugins/cache/p3stack/p3stack/$(git rev-parse HEAD | cut -c1-12)/$path" ;;
+    claude-team-kit) echo "$home/.claude/plugins/cache/p3stack/p3stack-team-kit/$(git rev-parse HEAD | cut -c1-12)/$path" ;;
     codex) echo "$home/.codex/plugins/cache/p3stack/p3stack/1.0.0/$path" ;;
   esac
 }
@@ -131,7 +133,9 @@ case $scenario in
     change p3stack/skills/poteto-mode/SKILL.md
     rm -rf "$home/.p3stack/installed"
     ;;
-  interrupted) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  interrupted|edit-after-failure) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  team-kit-auto-updated) edit claude-team-kit skills/deslop/SKILL.md 1 ;;
+  tool-without-p3stack) edit claude skills/poteto-mode/SKILL.md 1 ;;
   added)
     for root in "$home/.codex/plugins/cache/p3stack/p3stack/1.0.0" "$home/.cursor/plugins/local/p3stack"; do
       mkdir -p "$root/skills/poteto-mode/references"
@@ -152,9 +156,18 @@ git commit --quiet -am "Release 2"
 git push --quiet "$origin" main
 git rev-parse HEAD~1 HEAD >"$dir/releases"
 
-if [[ $scenario == auto-updated || $scenario == stale-plugin ]]; then
-  (eval "$(environment)"; claude plugin update p3stack@p3stack)
-fi
+case $scenario in
+  auto-updated|stale-plugin) (eval "$(environment)"; claude plugin update p3stack@p3stack) ;;
+  team-kit-auto-updated)
+    (eval "$(environment)"; claude plugin update p3stack-team-kit@p3stack)
+    echo "An edit made after the background auto-update." >>"$(installed claude-team-kit skills/deslop/SKILL.md)"
+    ;;
+  edit-after-failure)
+    (eval "$(environment)"; P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_FAIL_AFTER_UPDATE=codex bash "$installer" update) >"$dir/failed-update.log" 2>&1 || true
+    echo "An edit made after the failed update." >>"$(installed codex skills/poteto-mode/SKILL.md)"
+    ;;
+  tool-without-p3stack) mkdir -p "$home/.cursor" ;;
+esac
 
 environment
 echo "# Run: bash '$installer' update"
