@@ -563,6 +563,17 @@ test_replay_never_overwrites_newer_edits() {
   [[ -n $(grep -rl LATE_EDIT "$home/.p3stack/edits/codex") ]] || fail "LATE_EDIT has no backup"
 }
 
+test_replay_leaves_pre_update_content_for_scan() {
+  setup replay-pre both
+  stop_at_record_write
+  expect_failure=1 update_answering "a\n"
+  rm "$dir/bin/cp"
+  cp "$claude_old/skills/poteto-mode/SKILL.md" "$claude/skills/poteto-mode/SKILL.md"
+  update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$claude/skills/poteto-mode/SKILL.md" "Write the code test first."
+  [[ -n $(grep -rl "Write the code test first." "$home/.p3stack/edits/claude") ]] || fail "the user's pre-update version has no backup"
+}
+
 test_dead_journal_does_not_block_updates() {
   setup dead-journal kept
   mkdir -p "$home/.p3stack/pending/bogus" "$home/.p3stack/pending/cursor/sources"
@@ -625,6 +636,23 @@ test_record_matches_what_the_tool_installed() {
   [[ $(cat "$home/.p3stack/installed/claude/p3stack-team-kit.commit") == "$old" ]] || fail "team-kit record isn't the release Claude Code kept"
   update_answering "" P3STACK_FAKE_SKIP_UPDATE=p3stack-team-kit
   never_says "deslop"
+}
+
+test_unknown_installed_commit_keeps_record_and_journal() {
+  setup unknown-commit copy
+  mkdir "$dir/real"
+  cp "$here/fake-tool" "$dir/real/codex"
+  rm "$dir/bin/codex"
+  cat >"$dir/bin/codex" <<EOF
+#!/usr/bin/env bash
+[[ \$* != "plugin marketplace list" ]] || exit 1
+exec "$dir/real/codex" "\$@"
+EOF
+  chmod +x "$dir/bin/codex" "$dir/real/codex"
+  tools=codex expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  record_is codex "$old"
+  exists "$home/.p3stack/pending/codex"
+  says "couldn't determine the commit Codex installed"
 }
 
 test_failed_update_keeps_old_record() {
@@ -780,8 +808,10 @@ test_lock_names_path_and_reclaims_reused_pid() {
   mkdir "$home/.p3stack/lock"
   echo "$sleeper" >"$home/.p3stack/lock/pid"
   ps -o args= -p "$sleeper" >"$home/.p3stack/lock/command" 2>/dev/null || ps -o pid,args | awk -v pid="$sleeper" '$1 == pid { sub(/^ *[0-9]+ +/, ""); print }' >"$home/.p3stack/lock/command"
-  expect_failure=1 update_answering "a\n"
-  says "delete ~/.p3stack/lock"
+  update_answering "a\n"
+  recorded claude
+  mkdir -p "$home/.p3stack/lock"
+  echo "$sleeper" >"$home/.p3stack/lock/pid"
   echo "bash install.sh update" >"$home/.p3stack/lock/command"
   update_answering "a\n"
   recorded claude
