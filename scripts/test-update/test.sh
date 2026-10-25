@@ -1561,6 +1561,26 @@ test_fake_listings_match_real_captures() {
 
 }
 
+test_fake_codex_marketplace_upgrade_replaces_files() {
+  setup fake-codex-replacement interrupted
+  has "$codex/skills/poteto-mode/SKILL.md" 'Write the code test first.'
+  (load_fixture || exit 99; codex plugin marketplace upgrade p3stack)
+  is_release "$new" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+}
+
+test_fake_opencode_update_reuses_package_folder() {
+  setup fake-opencode-folders clean
+  (
+    load_fixture || exit 99
+    printf 'before:\n'
+    find "$home/.cache/opencode/npm" -type d -path '*/node_modules/p3stack' | sed "s|$home/||"
+    opencode plugin update github:sandwichlegend/p3stack >/dev/null
+    printf 'after:\n'
+    find "$home/.cache/opencode/npm" -type d -path '*/node_modules/p3stack' | sed "s|$home/||"
+  ) >"$dir/listing"
+  python3 "$here/check-cli-format.py" opencode-2.1.4-update-package-folders.txt "$dir/listing" "$home" "$old" || fail 'OpenCode update folder behavior differs from the real capture'
+}
+
 test_fresh_codex_home_installs() {
   setup fresh-codex clean
   rm -rf "$home/.codex" "$home/.p3stack/installed/codex"
