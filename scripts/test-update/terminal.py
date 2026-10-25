@@ -4,6 +4,15 @@ import pty
 import select
 import sys
 
+sys.dont_write_bytecode = True
+
+from importlib.util import spec_from_file_location, module_from_spec
+from pathlib import Path
+spec = spec_from_file_location("safe_home", Path(__file__).with_name("safe-home.py"))
+safe_home = module_from_spec(spec)
+spec.loader.exec_module(safe_home)
+safe_home.check(owned=True)
+
 out_path, answers, *command = sys.argv[1:]
 answers = answers.split(",") if answers else []
 pid, fd = pty.fork()

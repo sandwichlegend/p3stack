@@ -202,6 +202,7 @@ claude_update() {
   claude_install || return 1
   run claude plugin marketplace update "$marketplace" || return 1
   for plugin in "${plugins[@]}"; do
+    recheck_before_replace claude "$plugin" || return 1
     run claude plugin update "$plugin@$marketplace" || return 1
   done
 }
@@ -225,7 +226,7 @@ claude_uninstall() {
 
 claude_root() {
   local list root="" pattern="\"id\": *\"$1@$marketplace\"[^}]*\"installPath\": *\"([^\"]*)\""
-  list=$(query claude plugin list --json) || return 1
+  list=$(query claude plugin list --json) || return 2
   if has node; then
     root=$(printf '%s' "$list" | node -e '
       let data=""; process.stdin.on("data", x => data += x).on("end", () => {
@@ -260,7 +261,7 @@ except ValueError: sys.exit(1)
 # Claude Code names each install folder by the first 12 characters of its commit.
 claude_commit() {
   local root version
-  root=$(claude_root "${1:-p3stack}") || return 1
+  root=$(claude_root "${1:-p3stack}") || return $?
   version=$(basename "$root")
   [[ $version =~ ^[0-9a-f]{7,40}$ ]] && release_commit "$version"
 }
@@ -333,9 +334,20 @@ codex_install() {
 }
 
 codex_update() {
+  local after plugin provenance
   mkdir -p "$codex_home"
   run codex plugin marketplace add "$repo" || return 1
+  codex_market_commit >/dev/null || return 1
+  recheck_before_replace codex || return 1
+  for plugin in "${plugins[@]}"; do
+    provenance=$pending/codex/provenance/$plugin
+    mkdir -p "$(dirname "$provenance")" && printf 'unknown\n' >"$provenance" || return 1
+  done
   run codex plugin marketplace upgrade "$marketplace" || return 1
+  after=$(codex_market_commit) || return 1
+  for plugin in "${plugins[@]}"; do
+    printf '%s\n' "$after" >"$pending/codex/provenance/$plugin" || return 1
+  done
   for plugin in "${plugins[@]}"; do
     codex_add_plugin "$plugin" || return 1
   done
@@ -381,11 +393,11 @@ codex_market_commit() {
 
 codex_add_plugin() {
   local plugin=$1 before after provenance=$pending/codex/provenance/$1
-  mkdir -p "$(dirname "$provenance")" && printf 'unknown\n' >"$provenance" || return 1
-  before=$(codex_market_commit || true)
+  before=$(codex_market_commit) || return 1
   recheck_before_replace codex "$plugin" || return 1
+  mkdir -p "$(dirname "$provenance")" && printf 'unknown\n' >"$provenance" || return 1
   run codex plugin add "$plugin@$marketplace" || return 1
-  after=$(codex_market_commit || true)
+  after=$(codex_market_commit) || return 1
   if [[ -n $before && $before == "$after" ]]; then
     printf '%s\n' "$before" >"$provenance.next" && mv "$provenance.next" "$provenance" || return 1
   else
@@ -457,12 +469,13 @@ opencode_install() {
 
 opencode_update() {
   opencode_install || return 1
+  recheck_before_replace opencode || return 1
   run opencode plugin update "$opencode_spec"
 }
 
 opencode_uninstall() { run opencode plugin remove "$opencode_spec"; }
 
-# OpenCode installs the whole repository under a new timestamped folder on each update.
+# Old OpenCode package folders can remain after removal or a background update.
 opencode_package() {
   local dir stamp found="" newest=""
   for dir in "${XDG_CACHE_HOME:-$HOME/.cache}"/opencode/npm/git-p3stack-*/*/node_modules/p3stack; do
@@ -596,15 +609,67 @@ plugin_installed() {
       [[ $listing == *\"$plugin@$marketplace\"* ]]
       ;;
     codex)
+      mkdir -p "$codex_home" || return 2
       listing=$(query codex plugin list) || return 2
       awk -v name="$plugin@$marketplace" '$1 == name && $2 ~ /^installed/ { found = 1 } END { exit !found }' <<<"$listing"
       ;;
     cursor) [[ -d $cursor_local/$plugin ]] ;;
     opencode)
-      listing=$(query opencode plugin list) || return 2
-      awk -v source="$opencode_spec" '$1 == "p3stack" && $3 == source { found = 1 } END { exit !found }' <<<"$listing"
+      opencode_installed
       ;;
   esac
+}
+
+opencode_configured() {
+  local config=${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json
+  [[ -e $config ]] || return 1
+  if has node; then
+    node -e '
+      try {
+        const plugins = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).plugins ?? [];
+        if (!Array.isArray(plugins)) throw new Error("plugins is not an array");
+        process.exit(plugins.includes(process.argv[2]) ? 0 : 1);
+      } catch (error) {
+        console.error("could not read OpenCode plugin configuration:", error.message);
+        process.exit(2);
+      }' "$config" "$opencode_spec"
+    return $?
+  fi
+  python_ready || { warn "node or python3 is needed to cross-check OpenCode's plugin configuration"; return 2; }
+  python3 -I - "$config" "$opencode_spec" <<'PY'
+import json, sys
+try:
+    plugins = json.load(open(sys.argv[1])).get("plugins", [])
+    if not isinstance(plugins, list): raise ValueError("plugins is not an array")
+    sys.exit(0 if sys.argv[2] in plugins else 1)
+except (OSError, ValueError, AttributeError) as error:
+    print(f"couldn't read OpenCode's plugin configuration: {error}", file=sys.stderr)
+    sys.exit(2)
+PY
+}
+
+opencode_installed() {
+  local listing configured listed package attempt=0 version commit
+  while :; do
+    configured=0 listed=0 package=0
+    opencode_configured || configured=$?
+    ((configured != 2)) || return 2
+    listing=$(query opencode plugin list) || return 2
+    awk -v source="$opencode_spec" '$1 == "p3stack" && $3 == source { found = 1 } END { exit !found }' <<<"$listing" || listed=1
+    opencode_package >/dev/null || package=1
+    if ((configured == 0 && listed == 0 && package == 0)); then
+      version=$(awk '$1 == "p3stack" { print $2; exit }' <<<"$listing")
+      commit=$(opencode_commit) || return 2
+      [[ -n $version && $commit == "$version"* ]] || package=1
+    fi
+    if ((configured == listed)) && { ((configured == 1)) || ((package == 0)); }; then return "$configured"; fi
+    if ((attended == 0 || attempt >= 10)); then
+      warn "opencode plugin list disagrees with opencode.json or the installed package folder. OpenCode may still be refreshing its configuration. Nothing was installed there; wait a few seconds and run p3stack update again."
+      return 2
+    fi
+    attempt=$((attempt+1))
+    sleep 1
+  done
 }
 
 listing_failed() {
@@ -1039,7 +1104,7 @@ scan_folder() {
   [[ -z $base ]] || base_hashes "$tool" "$plugin" "$base" >"$listing"
   if [[ -s $listing ]]; then plugin_base=known; else plugin_base=unknown; fi
   if ! installed_paths "$tool" "$root" >"$work/installed-paths"; then scan_failed=1; return 0; fi
-  if [[ $kind != old && ( $tool == cursor || $tool == codex ) ]]; then
+  if [[ $kind != old ]]; then
     snapshot_folder "$tool" "$plugin" "$root" || { scan_failed=1; return 0; }
   fi
   { pair_hashes "$listing" "$new_release/$plugin.sha256" | cut -d $'\034' -f1; cat "$work/installed-paths"; } | LC_ALL=C sort -u >"$work/paths"
@@ -1125,7 +1190,9 @@ edits_scan() {
   name=$(tool_label "$tool")
   heading "$name"
   if ! has_record "$tool"; then
-    p3base=$(installed_base "$tool" p3stack || true)
+    status=0
+    p3base=$(installed_base "$tool" p3stack) || status=$?
+    if ((status == 2)); then listing_failed "$tool"; return 0; fi
     case $tool/${p3base:+known} in
       claude/known) say "  No record of the last install. Using the commit in the folder name (${p3base:0:7})." ;;
       */known) say "  No record of the last install. Using the commit $name installed (${p3base:0:7})." ;;
@@ -1142,13 +1209,24 @@ edits_scan() {
       return 0
     fi
     ((status == 0)) || continue
-    if ! root=$("${tool}_root" "$plugin"); then
+    status=0
+    root=$("${tool}_root" "$plugin") || status=$?
+    if ((status == 2)); then listing_failed "$tool"; rows_truncate "$first"; return 0; fi
+    if ((status)); then
       scan_stop "$tool" "$first" "p3stack is installed in $name, but the installer couldn't find where $name keeps $plugin, so it left $name alone. Check that $name still lists $plugin, or reinstall p3stack there, then run p3stack update again."
       return 0
     fi
-    base=$(installed_base "$tool" "$plugin" || true)
+    status=0
+    base=$(installed_base "$tool" "$plugin") || status=$?
+    if ((status == 2)); then listing_failed "$tool"; rows_truncate "$first"; return 0; fi
     active=""
-    [[ " $commit_named_by_install " != *" $tool "* ]] || active=$("${tool}_commit" "$plugin" 2>/dev/null || true)
+    if [[ " $commit_named_by_install " == *" $tool "* ]]; then
+      if ! active=$("${tool}_commit" "$plugin"); then
+        listing_failed "$tool"
+        rows_truncate "$first"
+        return 0
+      fi
+    fi
     if [[ -n $base && -n $active && $base != "$active" ]]; then
       if old=$(old_root "$tool" "$plugin" "$base"); then
         say "  Checking $plugin edits from before the background auto-update and since."
@@ -1218,18 +1296,29 @@ snapshot_folder() {
 }
 
 recheck_before_replace() {
-  local tool=$1 only=${2:-} plugin root path previous current backup base i n changed=0 snapshot=$work/scan/$1
+  local tool=$1 only=${2:-} plugin root path previous current backup base i n changed=0 snapshot=$work/scan/$1 installed tree status
   journal_load "$tool" || return 1
   for plugin in "${plugins[@]}"; do
     [[ -z $only || $plugin == "$only" ]] || continue
-    root=$("${tool}_root" "$plugin" || true)
+    [[ -f $snapshot/$plugin.root ]] || continue
+    status=0
+    root=$("${tool}_root" "$plugin") || status=$?
+    ((status != 2)) || return 1
     [[ -n $root ]] || continue
     if [[ -f $snapshot/$plugin.root && $(cat "$snapshot/$plugin.root") != "$root" ]]; then
       warn "$(tool_label "$tool") changed $plugin's folder after the scan, so it was left alone. Run p3stack update again."
       return 1
     fi
     installed_paths "$tool" "$root" >"$work/recheck-paths" || return 1
+    tree=""
+    if [[ $tool == codex && -f $pending/codex/provenance/$plugin ]]; then
+      installed=$(codex_commit "$plugin") || return 1
+      if ! tree=$(release_tree "$installed"); then
+        git -C "$release_clone" fetch --quiet origin </dev/null 3<&- && tree=$(release_tree "$installed") || return 1
+      fi
+    fi
     while IFS= read -r path; do
+      if [[ -n $tree && -f $tree/$plugin/$path ]] && same_file "$tree/$plugin/$path" "$root/$path"; then continue; fi
       previous=$(awk -F '\034' -v path="$path" '$1 == path { print $2 }' "$snapshot/$plugin.files" 2>/dev/null || true)
       current=$(raw_signature "$root/$path") || return 1
       [[ $current != "$previous" ]] || continue
@@ -1633,6 +1722,7 @@ edits_decide() {
 edits_prepare() {
   local tool base status olds=() scan=()
   scan_generation=$gen_stamp-${new_commit:0:7}
+  open_keyboard
   for tool; do
     [[ $stopped != *" $tool "* ]] || continue
     prepare_installation "$tool"
@@ -1641,9 +1731,11 @@ edits_prepare() {
     has_p3stack "$tool" || status=$?
     if ((status == 2)); then listing_failed "$tool"; continue; fi
     ((status == 0)) || continue
+    status=0
+    base=$(installed_base "$tool" p3stack) || status=$?
+    if ((status == 2)); then listing_failed "$tool"; continue; fi
     scan+=("$tool")
     reinstall+="$tool "
-    base=$(installed_base "$tool" p3stack || true)
     [[ -z $base ]] || olds+=("${base:0:7}")
   done
   say ""
@@ -1653,7 +1745,6 @@ edits_prepare() {
     say "p3stack ${new_commit:0:7}"
   fi
   say "Fetched the new release. Checking your installed copies before installing."
-  open_keyboard
   for tool in ${scan[@]+"${scan[@]}"}; do
     edits_scan "$tool"
     [[ $stopped == *" $tool "* ]] || scanned_tools+="$tool "
@@ -1837,7 +1928,7 @@ apply_row() {
 }
 
 journal_apply() {
-  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i p root plugin installed tree had_record=0 kept=() accepted=() reported=" " skill bases raced=0 chose=0
+  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i p root plugin installed tree had_record=0 kept=() accepted=() reported=" " skill bases raced=0 chose=0 status
   local actual_commits=() actual_trees=() actual_roots=()
   journal_load "$tool" || return 1
   commit=$(cat "$journal/commit") || return 1
@@ -1845,9 +1936,12 @@ journal_apply() {
     plugin=${plugins[p]}
     root=$("${tool}_root" "$plugin") || return 2
     actual_roots[p]=$root
-    if ! installed=$("${tool}_commit" "$plugin" 2>/dev/null) || [[ -z $installed ]]; then
+    status=0
+    installed=$("${tool}_commit" "$plugin") || status=$?
+    ((status != 2)) || return 1
+    if ((status)) || [[ -z $installed ]]; then
       git -C "$release_clone" fetch --quiet origin </dev/null 3<&- || return 1
-      if ! installed=$("${tool}_commit" "$plugin" 2>/dev/null) || [[ -z $installed ]]; then
+      if ! installed=$("${tool}_commit" "$plugin") || [[ -z $installed ]]; then
         warn "couldn't determine the commit $(tool_label "$tool") installed for $plugin, so its record stays unchanged and this update waits in $(tilde "$journal")"
         [[ $replay != 1 ]] || return 3
         return 1
@@ -1859,7 +1953,7 @@ journal_apply() {
       return 1
     fi
     [[ $replay != 1 || $installed == "$commit" ]] || return 3
-    if [[ $replay == 1 && $tool == codex && $(codex_market_commit 2>/dev/null || true) != "$installed" ]]; then return 3; fi
+    if [[ $replay == 1 && $tool == codex && $(codex_market_commit || true) != "$installed" ]]; then return 3; fi
     actual_commits[p]=$installed actual_trees[p]=$tree
     [[ $installed == "$commit" ]] || raced=1
   done
@@ -1912,7 +2006,7 @@ journal_apply() {
 }
 
 journal_rollback() {
-  local tool=$1 journal=$pending/$1 i plugin root dest installed tree safe bases=$work/rollback-bases
+  local tool=$1 journal=$pending/$1 i plugin root dest installed tree safe status bases=$work/rollback-bases
   journal_load "$tool" || return 1
   if [[ $tool == cursor ]]; then
     for plugin in "${plugins[@]}"; do
@@ -1921,19 +2015,25 @@ journal_rollback() {
   fi
   if [[ $tool == claude ]]; then
     for plugin in "${plugins[@]}"; do
-      root=$(claude_root "$plugin" allow-missing 2>/dev/null || true)
+      status=0
+      root=$(claude_root "$plugin" allow-missing) || status=$?
+      ((status != 2)) || return 1
       [[ -z $root ]] || mkdir -p "$root" || return 1
     done
   fi
   if [[ -f $records/$tool/bases ]]; then cp "$records/$tool/bases" "$bases" || return 1; else : >"$bases" || return 1; fi
   for ((i = 0; i < ${#row_tool[@]}; i++)); do
     [[ -n ${row_backup[i]} ]] || continue
-    root=$("${tool}_root" "${row_plugin[i]}" 2>/dev/null || true)
+    status=0
+    root=$("${tool}_root" "${row_plugin[i]}") || status=$?
+    ((status != 2)) || return 1
     [[ -n $root ]] || root=${row_root[i]}
     dest=$root/${row_path[i]}
     safe=${row_release[i]}
     [[ -z $new_release ]] || safe+=" $(release_hash "$new_release" "${row_plugin[i]}" "${row_path[i]}")"
-    installed=$("${tool}_commit" "${row_plugin[i]}" 2>/dev/null || true)
+    status=0
+    installed=$("${tool}_commit" "${row_plugin[i]}") || status=$?
+    ((status != 2)) || return 1
     if [[ -n $installed ]] && tree=$(release_tree "$installed"); then
       safe+=" $(release_hash "$tree" "${row_plugin[i]}" "${row_path[i]}")"
     fi
