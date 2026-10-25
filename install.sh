@@ -1928,7 +1928,7 @@ apply_row() {
 }
 
 journal_apply() {
-  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i p root plugin installed tree had_record=0 kept=() accepted=() reported=" " skill bases raced=0 chose=0 status
+  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i p root plugin installed tree had_record=0 kept=() accepted=() reported=" " skill bases raced=0 chose=0 status actual_market
   local actual_commits=() actual_trees=() actual_roots=()
   journal_load "$tool" || return 1
   commit=$(cat "$journal/commit") || return 1
@@ -1953,7 +1953,10 @@ journal_apply() {
       return 1
     fi
     [[ $replay != 1 || $installed == "$commit" ]] || return 3
-    if [[ $replay == 1 && $tool == codex && $(codex_market_commit || true) != "$installed" ]]; then return 3; fi
+    if [[ $replay == 1 && $tool == codex ]]; then
+      actual_market=$(codex_market_commit) || return 1
+      [[ $actual_market == "$installed" ]] || return 3
+    fi
     actual_commits[p]=$installed actual_trees[p]=$tree
     [[ $installed == "$commit" ]] || raced=1
   done
