@@ -1197,6 +1197,23 @@ test_accept_actual_release_removal_reports_the_removal() {
   has "$(backup_for codex skills/poteto-mode/SKILL.md)" "Write the code test first."
 }
 
+test_fake_listings_match_real_captures() {
+  setup cli-format clean
+  : >"$dir/out"
+  local tool capture args
+  for capture in codex-0.164.0-list-installed-json.txt codex-0.164.0-list-installed.txt claude-2.1.310-list-installed.txt claude-2.1.310-list-installed-json.txt opencode-2.1.4-list-observed-3.txt; do
+    tool=${capture%%-*}
+    args='plugin list'
+    [[ $capture != *json.txt ]] || args+=' --json'
+    (eval "$(cat "$dir.env")"; "$tool" $args) >"$dir/listing"
+    python3 "$here/check-cli-format.py" "$capture" "$dir/listing" "$home" "$old" || fail "$tool listing differs from its real capture"
+  done
+  (eval "$(cat "$dir.env")"; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack; codex plugin list) >"$dir/listing"
+  python3 "$here/check-cli-format.py" codex-0.164.0-list-removed.txt "$dir/listing" "$home" "$old" || fail "Codex removed listing differs from its real capture"
+  (eval "$(cat "$dir.env")"; opencode plugin remove github:sandwichlegend/p3stack; opencode plugin list) >"$dir/listing"
+  python3 "$here/check-cli-format.py" opencode-2.1.4-plugin-list.txt "$dir/listing" "$home" "$old" || fail "OpenCode removed listing differs from its real capture"
+}
+
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
 for name in ${*:-$cases}; do
   case_failed=0

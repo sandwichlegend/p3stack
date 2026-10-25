@@ -1,0 +1,7 @@
+$ codex plugin list --json
+{
+  "installed": [],
+  "available": []
+}
+
+exit: 0

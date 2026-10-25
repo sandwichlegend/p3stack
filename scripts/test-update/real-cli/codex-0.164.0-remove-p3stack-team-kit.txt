@@ -1,0 +1,4 @@
+$ codex plugin remove p3stack-team-kit@p3stack
+Removed plugin `p3stack-team-kit` from marketplace `p3stack`.
+
+exit: 0

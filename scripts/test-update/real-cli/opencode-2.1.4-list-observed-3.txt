@@ -1,0 +1,5 @@
+$ opencode plugin list
+ID       VERSION  SOURCE
+p3stack  f79db5a  github:sandwichlegend/p3stack
+
+exit: 0

@@ -1,0 +1,12 @@
+$ cursor-agent plugin install --help
+Usage: agent plugin [options] [command]
+
+Manage plugins and plugin marketplaces
+
+Options:
+  -h, --help   Display help for command
+
+Commands:
+  marketplace  Manage plugin marketplaces
+
+exit: 0

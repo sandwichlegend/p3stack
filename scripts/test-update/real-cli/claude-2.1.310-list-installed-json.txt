@@ -1,0 +1,25 @@
+$ claude plugin list --json
+[
+  {
+    "id": "p3stack-team-kit@p3stack",
+    "version": "f79db5ab3659",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "<HOME>/.claude/plugins/cache/p3stack/p3stack-team-kit/f79db5ab3659",
+    "installedAt": "2026-10-25T02:53:25.432Z",
+    "lastUpdated": "2026-10-25T02:53:25.432Z",
+    "projectEnabled": true
+  },
+  {
+    "id": "p3stack@p3stack",
+    "version": "f79db5ab3659",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "<HOME>/.claude/plugins/cache/p3stack/p3stack/f79db5ab3659",
+    "installedAt": "2026-10-25T02:53:24.983Z",
+    "lastUpdated": "2026-10-25T02:53:24.983Z",
+    "projectEnabled": true
+  }
+]
+
+exit: 0

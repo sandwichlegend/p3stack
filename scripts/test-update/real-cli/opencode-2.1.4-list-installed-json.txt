@@ -1,0 +1,22 @@
+$ opencode plugin list --json
+DESCRIPTION
+  List plugins
+
+USAGE
+  opencode plugin list [flags]
+
+FLAGS
+  --builtin    Include built-in server plugins
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+  --print-logs                                                        Print logs to stderr (server logs require --standalone)
+
+ERROR
+  Unrecognized flag: --json in command opencode plugin list
+
+exit: 1
