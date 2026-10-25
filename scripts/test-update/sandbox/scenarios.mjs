@@ -18,4 +18,6 @@ export const scenarios = [
   { id: "tool-without-p3stack", description: "Cursor is present but never had p3stack; Claude has your edit.", try: "Update. Cursor gets a plain install, and your Claude edit stays." },
   { id: "released-while-choosing", description: "p3stack releases again after you choose and before Codex installs.", try: "Choose K. Your edit stays. Update again and choose A to take the newer release." },
   { id: "removed-through-tool", description: "You removed both plugins through Claude Code; an edited cache and install record remain.", try: "Update. Claude Code reinstalls, and your leftover edit stays backed up without a choice." },
+  { id: "edited-while-updating", description: "A newer skill edit and a new file arrive after the scan, before Codex replaces its cache.", try: "Choose A for the earlier edit. The newer edit and new file should still be backed up and kept." },
+  { id: "two-leftover-versions", description: "Claude auto-updated, then you removed both plugins. Two cached versions hold different edits.", try: "Update. Both edited versions should be backed up under their own version folders, and installation should succeed." },
 ]

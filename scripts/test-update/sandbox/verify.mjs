@@ -18,6 +18,7 @@ for (const name of ["claude", "codex", "cursor-agent", "opencode"]) {
 const scratch = await mkdtemp(join(tmpdir(), "p3stack-sandbox-verify-"))
 const answers = {
   copy: [["Choose Y/N", "y"]],
+  "edited-while-updating": [["Choose K/A/T", "a"]],
   both: [["Choose K/A/T", "t"], ["Choose 1/2", "1"], ["Choose Y/N", "y"]],
   removed: [["Choose K/A", "k"]],
   first: [["Choose K/A", "a"]],
@@ -44,9 +45,12 @@ const expected = {
   "team-kit-auto-updated": "Kept your version of deslop.",
   "released-while-choosing": "p3stack released again while you were choosing",
   "removed-through-tool": "isn't installed in Claude Code",
+  "edited-while-updating": "after the scan",
+  "two-leftover-versions": "isn't installed in Claude Code",
   "tool-without-p3stack": "Kept your version of poteto-mode.",
 }
 const files = {
+  "edited-while-updating": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "An edit made while the update was running."],
   "released-while-choosing": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "Write the code test first."],
   "edit-after-failure": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "An edit made after the failed update."],
   "team-kit-auto-updated": ["home/.claude/plugins/cache/p3stack/p3stack-team-kit", "An edit made after the background auto-update."],
@@ -99,6 +103,20 @@ try {
         const [path, text] = files[scenario.id]
         const found = execFileSync("grep", ["-rlF", text, `${dir}/work/${path}`], { encoding: "utf8" })
         assert(found.trim(), `${scenario.id}: ${path} lacks ${text}`)
+      }
+      if (scenario.id === "edited-while-updating") {
+        const base = `${dir}/work/home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode`
+        assert((await readFile(`${base}/mine.txt`, "utf8")).includes("A file added while the update was running."))
+        for (const text of ["An edit made while the update was running.", "A file added while the update was running."]) {
+          assert(execFileSync("grep", ["-rlF", text, `${dir}/work/home/.p3stack/edits/codex`], { encoding: "utf8" }).trim())
+        }
+      }
+      if (scenario.id === "two-leftover-versions") {
+        const [old, latest] = (await readFile(`${dir}/work/releases`, "utf8")).trim().split("\n")
+        for (const [version, text] of [[old, "Write the code test first."], [latest, "An edit in the newer leftover Claude version."]]) {
+          const saved = execFileSync("grep", ["-rlF", text, `${dir}/work/home/.p3stack/edits/claude`], { encoding: "utf8" }).trim()
+          assert(saved.includes(`/p3stack/${version.slice(0, 12)}/skills/poteto-mode/SKILL.md`), saved)
+        }
       }
       if (scenario.id === "released-while-choosing") {
         const bases = await readFile(`${dir}/work/home/.p3stack/installed/codex/bases`, "utf8")

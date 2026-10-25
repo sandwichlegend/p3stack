@@ -41,6 +41,8 @@ This is a local fixture playground, not a service for untrusted users. Selected 
 
 ## Verify the sandbox
 
-Run `npm test` to load all seventeen scenarios, drive the real CLI in pseudo-terminals, check both fake merge results, and attempt writes outside scratch. The checks also confirm that the host home and embedded Codex executable are absent. HTTP tests cover Host, Origin, loopback token, and cookie rejection, malformed JSON, unknown scenarios that do not consume the creation limit, query strings, concurrent session limits, request rate limits, and idle expiry refreshed by input and output.
+Run `npm test` to load all fixture scenarios, drive the real CLI in pseudo-terminals, check both fake merge results, and attempt writes outside scratch. The checks also confirm that the host home and embedded Codex executable are absent. HTTP tests cover Host, Origin, loopback token, and cookie rejection, malformed JSON, unknown scenarios that do not consume the creation limit, query strings, concurrent session limits, request rate limits, and idle expiry refreshed by input and output.
 
 The `released-while-choosing` card publishes a fixture release after your choice, just before Codex updates. Choose Keep, then update again to see the newer-change question. The `removed-through-tool` card leaves Claude Code's edited cache after uninstall. Update to reinstall and inspect the leftover edit in the backups.
+
+The `edited-while-updating` card adds a newer edit and a file after the scan. Accept the earlier version to check that the newer content still survives. The `two-leftover-versions` card retains edits in two Claude cache versions after uninstall. Its update backs up each version separately before reinstalling.

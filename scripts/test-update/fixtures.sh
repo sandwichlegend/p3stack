@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin edit-after-failure team-kit-auto-updated tool-without-p3stack released-while-choosing removed-through-tool"
+scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin edit-after-failure team-kit-auto-updated tool-without-p3stack released-while-choosing removed-through-tool edited-while-updating two-leftover-versions"
 scenario=${1:-}
 [[ " $scenarios " == *" $scenario "* && -n ${2:-} ]] || { echo "usage: fixtures.sh <$(tr ' ' '|' <<<"$scenarios")> <dir>" >&2; exit 2; }
 
@@ -22,7 +22,7 @@ done
 
 case $scenario in
   added) tools="codex cursor-agent" ;;
-  interrupted|edit-after-failure|released-while-choosing) tools="codex" ;;
+  interrupted|edit-after-failure|released-while-choosing|edited-while-updating) tools="codex" ;;
   removed) tools="claude codex opencode" ;;
   clean) tools="claude codex cursor-agent opencode" ;;
   copy|both|nobody|first) tools="claude codex" ;;
@@ -36,9 +36,10 @@ export HOME='$home'
 export PATH='$dir/bin:$dir/sys'
 export P3STACK_REPO_URL='$origin'
 export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache' XDG_CONFIG_HOME='$home/.config' XDG_DATA_HOME='$home/.local/share' XDG_STATE_HOME='$home/.local/state'
-unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE P3STACK_FAKE_RELEASE_DURING_UPDATE
+unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE P3STACK_FAKE_RELEASE_DURING_UPDATE P3STACK_FAKE_LATE_EDIT
 EOF
   [[ $scenario != released-while-choosing ]] || echo "export P3STACK_FAKE_RELEASE_DURING_UPDATE=1"
+  [[ $scenario != edited-while-updating ]] || echo "export P3STACK_FAKE_LATE_EDIT=1"
 }
 
 skill() {
@@ -134,7 +135,7 @@ case $scenario in
     change p3stack/skills/poteto-mode/SKILL.md
     rm -rf "$home/.p3stack/installed"
     ;;
-  interrupted|edit-after-failure|released-while-choosing) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  interrupted|edit-after-failure|released-while-choosing|edited-while-updating) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
   team-kit-auto-updated) edit claude-team-kit skills/deslop/SKILL.md 1 ;;
   removed-through-tool|tool-without-p3stack) edit claude skills/poteto-mode/SKILL.md 1 ;;
   added)
@@ -148,7 +149,7 @@ case $scenario in
     echo "echo my-hook" >>"$(installed claude hooks/session-start)"
     git rm --quiet p3stack/skills/recall/references/notes.md p3stack/hooks/session-start
     ;;
-  auto-updated) edit claude skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  auto-updated|two-leftover-versions) edit claude skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
   stale-plugin) change p3stack/skills/poteto-mode/SKILL.md ;;
   script) edit claude skills/poteto-mode/scripts/watch-pr/github.ts 0; change p3stack/skills/poteto-mode/scripts/watch-pr/github.ts ;;
 esac
@@ -166,6 +167,11 @@ case $scenario in
   edit-after-failure)
     (eval "$(environment)"; P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_FAIL_AFTER_UPDATE=codex bash "$installer" update) >"$dir/failed-update.log" 2>&1 || true
     echo "An edit made after the failed update." >>"$(installed codex skills/poteto-mode/SKILL.md)"
+    ;;
+  two-leftover-versions)
+    (eval "$(environment)"; claude plugin update p3stack@p3stack)
+    echo "An edit in the newer leftover Claude version." >>"$(installed claude skills/poteto-mode/SKILL.md)"
+    (eval "$(environment)"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
     ;;
   removed-through-tool)
     (eval "$(environment)"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)

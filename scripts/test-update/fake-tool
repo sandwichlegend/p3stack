@@ -89,6 +89,14 @@ codex_home=${CODEX_HOME:-$HOME/.codex}
 codex_market=$codex_home/.tmp/marketplaces/p3stack
 codex_state=$codex_home/plugins/installed.txt
 
+edit_during_update() {
+  [[ ${P3STACK_FAKE_LATE_EDIT:-} == 1 && ! -f $HOME/.p3stack/fixture-late-edit ]] || return 0
+  local root=$codex_home/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode
+  printf '\nAn edit made while the update was running.\n' >>"$root/SKILL.md"
+  printf 'A file added while the update was running.\n' >"$root/mine.txt"
+  touch "$HOME/.p3stack/fixture-late-edit"
+}
+
 publish_during_choice() {
   [[ ${P3STACK_FAKE_RELEASE_DURING_UPDATE:-} == 1 && ! -f $HOME/.p3stack/fixture-release-published ]] || return 0
   local release
@@ -102,7 +110,7 @@ publish_during_choice() {
 codex() {
   case "$*" in
     "plugin marketplace add "*) [[ -d $codex_market ]] || git clone --quiet "$origin" "$codex_market" ;;
-    "plugin marketplace upgrade "*) publish_during_choice; git -C "$codex_market" pull --quiet --ff-only ;;
+    "plugin marketplace upgrade "*) publish_during_choice; edit_during_update; git -C "$codex_market" pull --quiet --ff-only ;;
     "plugin marketplace list") printf 'MARKETPLACE  ROOT\n'; [[ ! -d $codex_market ]] || printf 'p3stack      %s\n' "$codex_market" ;;
     "plugin marketplace remove "*) rm -rf "$codex_market" ;;
     "plugin list --json")
