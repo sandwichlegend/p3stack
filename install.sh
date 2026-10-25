@@ -569,7 +569,7 @@ plugin_installed() {
         [[ -d ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/$marketplace/$plugin ]]
         return
       fi
-      lists "$listing" "$plugin@$marketplace"
+      lists "$listing" "$plugin@$marketplace" || [[ -d ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/$marketplace/$plugin ]]
       ;;
     codex) [[ -d $codex_home/plugins/cache/$marketplace/$plugin ]] ;;
     cursor) [[ -d $cursor_local/$plugin ]] ;;
@@ -1160,7 +1160,8 @@ personal_visible() {
       [[ ! -e $link && ! -L $link ]] || return 1
       mkdir -p "$(dirname "$link")" && ln -s "$dest" "$link"
       ;;
-    *) return 0 ;;
+    codex|cursor|opencode) [[ -f $dest/SKILL.md ]] ;;
+    *) return 1 ;;
   esac
 }
 
@@ -1557,7 +1558,7 @@ journal_save_sources() {
 # Each destination is hashed before it is touched. The update may replace the user's content it asked about (pre), the release files (release), or nothing.
 # Anything else is a newer edit, and stays.
 apply_row() {
-  local i=$1 dest=$2 journal=$3 bases=$4 current="" source="" saved
+  local i=$1 dest=$2 journal=$3 bases=$4 replay=$5 current="" source="" saved
   if [[ -L $dest || ( -e $dest && ! -f $dest ) ]]; then
     current=other
   elif [[ -f $dest ]]; then
@@ -1570,8 +1571,10 @@ apply_row() {
   esac
   if [[ $current == "${row_apply[i]}" ]]; then
     :
-  elif [[ -z $current || $current == "${row_pre[i]}" || " ${row_release[i]} " == *" $current "* ||
-    ( -n $new_release && $current == "$(release_hash "$new_release" "${row_plugin[i]}" "${row_path[i]}")" ) ]]; then
+  elif [[ $replay == 1 && -n $current && $current == "${row_pre[i]}" ]]; then
+    row_action[i]=newer
+    return 0
+  elif [[ -z $current || $current == "${row_pre[i]}" || " ${row_release[i]} " == *" $current "* ]]; then
     if [[ -z $source ]]; then
       rm -f "$dest" || return 1
     else
@@ -1599,7 +1602,7 @@ apply_row() {
 
 # Returns 2 when a folder it needs is missing, so the caller can reinstall p3stack there and try again.
 journal_apply() {
-  local tool=$1 journal=$pending/$1 commit i root plugin plugin_commit tree had_record=0 kept=() accepted=() reported=" " skill bases
+  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i root plugin plugin_commit tree had_record=0 kept=() accepted=() reported=" " skill bases
   journal_load "$tool" || return 1
   commit=$(cat "$journal/commit") || return 1
   for ((i = 0; i < ${#row_tool[@]}; i++)); do
@@ -1610,7 +1613,7 @@ journal_apply() {
   : >"$bases" || return 1
   for ((i = 0; i < ${#row_tool[@]}; i++)); do
     root=$("${tool}_root" "${row_plugin[i]}") || return 2
-    if ! apply_row "$i" "$root/${row_path[i]}" "$journal" "$bases"; then
+    if ! apply_row "$i" "$root/${row_path[i]}" "$journal" "$bases" "$replay"; then
       warn "couldn't write $(tilde "$root/${row_path[i]}"). The rest of this update waits in $(tilde "$journal")."
       return 1
     fi
@@ -1628,13 +1631,16 @@ journal_apply() {
   mkdir -p "$records/$tool" && mv "$bases" "$records/$tool/bases" || return 1
   for plugin in "${plugins[@]}"; do
     "${tool}_root" "$plugin" >/dev/null 2>&1 || continue
-    plugin_commit=$("${tool}_commit" "$plugin" 2>/dev/null) || plugin_commit=$commit
+    if ! plugin_commit=$("${tool}_commit" "$plugin" 2>/dev/null) || [[ -z $plugin_commit ]]; then
+      warn "couldn't determine the commit $(tool_label "$tool") installed for $plugin, so its record stays unchanged and this update waits in $(tilde "$journal")"
+      return 1
+    fi
     if [[ $plugin_commit == "$commit" ]]; then
       tree=$journal/tree
     elif ! tree=$(release_tree "$plugin_commit") &&
       ! { git -C "$release_clone" fetch --quiet origin </dev/null 3<&- && tree=$(release_tree "$plugin_commit"); }; then
       warn "couldn't read the p3stack release $(tool_label "$tool") installed for $plugin (${plugin_commit:0:7}), so its record wasn't updated"
-      continue
+      return 1
     fi
     record_write "$tool" "$plugin" "$plugin_commit" "$tree" || return 1
   done
@@ -1708,7 +1714,7 @@ recover_updates() {
     fi
     status=0
     if [[ $(cat "$dir/state") == tool-updated ]]; then
-      journal_apply "$name" || status=$?
+      journal_apply "$name" 1 || status=$?
       ((status)) || say "Finished an interrupted update in $(tool_label "$name"). Your edits are restored."
     else
       journal_rollback "$name" || status=$?
@@ -1752,9 +1758,13 @@ lock_owner_alive() {
   pid=$(cat "$1/pid" 2>/dev/null || true)
   if [[ -n $pid && $pid != *[!0-9]* ]]; then
     kill -0 "$pid" 2>/dev/null || return 1
-    [[ -f $1/command ]] || return 0
     args=$(process_args "$pid" || true)
-    [[ -z $args || $args == "$(cat "$1/command")" ]]
+    case $args in
+      *install.sh*|*p3stack*) ;;
+      bash|*/bash|'bash -s'|*'/bash -s') [[ -f $1/command ]] || return 1 ;;
+      *) return 1 ;;
+    esac
+    [[ ! -f $1/command || $args == "$(cat "$1/command")" ]]
     return
   fi
   [[ -z $(find "$1" -prune -mmin +1) ]]

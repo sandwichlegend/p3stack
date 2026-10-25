@@ -406,13 +406,27 @@ test_cursor_has_known_base() {
 
 test_only_one_update_runs_at_a_time() {
   setup update-lock both
-  mkdir "$home/.p3stack/lock"
-  echo "$$" >"$home/.p3stack/lock/pid"
+  mkfifo "$dir/keyboard"
+  (
+    eval "$(cat "$dir.env")"
+    export P3STACK_TTY=$dir/keyboard
+    exec bash "$installer" update
+  ) >"$dir/holder.out" 2>&1 &
+  local holder=$! n
+  for ((n = 0; n < 500; n++)); do
+    [[ ! -f $home/.p3stack/lock/command ]] || break
+    sleep 0.01
+  done
+  exists "$home/.p3stack/lock/command"
   expect_failure=1 update_answering "a\n"
   says "another p3stack"
+  says "delete ~/.p3stack/lock"
   absent "$claude"
+  printf 'a\n' >"$dir/keyboard"
+  wait "$holder" || fail "the lock holder failed"
+  mkdir -p "$home/.p3stack/lock"
   echo 2147483647 >"$home/.p3stack/lock/pid"
-  update_answering "a\n"
+  update_answering ""
   recorded claude
   absent "$home/.p3stack/lock"
 }
@@ -685,6 +699,28 @@ test_present_tool_without_p3stack_is_installed() {
   recorded cursor
 }
 
+test_unlisted_install_folder_stops_only_that_tool() {
+  setup unlisted-folder copy
+  rm -rf "$home/.p3stack/installed/claude"
+  mkdir "$dir/real"
+  cp "$here/fake-tool" "$dir/real/claude"
+  rm "$dir/bin/claude"
+  cat >"$dir/bin/claude" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  "plugin list") exit 0 ;;
+  "plugin list --json") echo '[]'; exit 0 ;;
+esac
+exec "$dir/real/claude" "\$@"
+EOF
+  chmod +x "$dir/bin/claude" "$dir/real/claude"
+  expect_failure=1 update_answering ""
+  says "couldn't find where Claude Code keeps"
+  has "$claude_old/skills/poteto-mode/SKILL.md" "Write the code test first."
+  absent "$home/.p3stack/installed/claude"
+  recorded codex
+}
+
 test_unresolved_root_stops_only_that_tool() {
   setup unresolved-one copy
   expect_failure=1 update_answering "" P3STACK_FAKE_JSON='[]'
@@ -791,12 +827,32 @@ test_kept_removed_skill_reaches_every_tool() {
   exists "$claude/skills/recall/SKILL.md"
 }
 
+test_kept_removed_skill_reaches_cursor() {
+  setup removed-cursor removed
+  mkdir -p "$home/.cursor/plugins/local"
+  cp -R "$claude_old" "$home/.cursor/plugins/local/p3stack"
+  update_answering "k\n"
+  exists "$home/.agents/skills/recall/SKILL.md"
+  absent "$home/.cursor/plugins/local/p3stack/skills/recall"
+  says "where Claude Code, Codex, Cursor and OpenCode load it"
+}
+
 test_unsafe_file_stops_only_that_tool() {
   setup unsafe-file copy
   ln -s /dev/null "$claude_old/skills/poteto-mode/link.md"
   expect_failure=1 update_answering ""
   says "skills/poteto-mode/link.md"
   says "Move the link out"
+  record_is claude "$old"
+  recorded codex
+}
+
+test_unusual_filename_stops_only_that_tool() {
+  setup unusual-file copy
+  echo "My file" >"$claude_old/skills/poteto-mode/"$'odd\nname.md'
+  expect_failure=1 update_answering ""
+  says "odd"
+  says "Rename the file or move it out"
   record_is claude "$old"
   recorded codex
 }
