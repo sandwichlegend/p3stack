@@ -1184,6 +1184,19 @@ test_accept_uses_each_plugins_actual_release() {
 }
 
 
+
+test_accept_actual_release_removal_reports_the_removal() {
+  setup race-removal interrupted
+  release_while_choosing
+  git -C "$dir/release" rm --quiet p3stack/skills/poteto-mode/SKILL.md
+  git -C "$dir/release" -c user.name=fixture -c user.email=fixture@example.com commit --quiet -m "Remove poteto-mode"
+  tools=codex update_answering "a\n"
+  absent "$codex/skills/poteto-mode/SKILL.md"
+  says "The installed p3stack release removed poteto-mode."
+  never_says "Installed p3stack's poteto-mode."
+  has "$(backup_for codex skills/poteto-mode/SKILL.md)" "Write the code test first."
+}
+
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
 for name in ${*:-$cases}; do
   case_failed=0
