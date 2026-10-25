@@ -1715,6 +1715,16 @@ journal_apply() {
       return 1
     fi
     case ${row_outcome[i]} in already-right|restored) ;; *) continue ;; esac
+    if [[ ${actual_commits[p]} != "$commit" ]]; then
+      if [[ ( ${row_action[i]} == accept || ${row_class[i]} == deleted ) && ! -f $tree/${row_plugin[i]}/${row_path[i]} ]]; then
+        say "  The installed p3stack release removed $(label "${row_path[i]}")."
+        [[ -z ${row_backup[i]} ]] || say "  Your version is saved in $(tilde "${row_backup[i]}")."
+        continue
+      elif [[ ${row_action[i]} == keep ]]; then
+        say "  Kept your version of $(label "${row_path[i]}")."
+        continue
+      fi
+    fi
     skill=$(skill_of "${row_path[i]}" || true)
     class_policy "$i"
     if [[ $report_style == group ]]; then
