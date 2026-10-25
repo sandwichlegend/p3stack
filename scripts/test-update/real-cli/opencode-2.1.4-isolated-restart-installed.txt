@@ -1,0 +1,3 @@
+$ opencode service stop
+
+exit: 0

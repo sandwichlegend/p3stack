@@ -1,0 +1,4 @@
+$ claude --version
+2.1.310 (Claude Code)
+
+exit: 0

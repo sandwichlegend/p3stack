@@ -1,0 +1,4 @@
+$ claude plugin uninstall p3stack-team-kit@p3stack
+✔ Successfully uninstalled plugin: p3stack-team-kit (scope: user)
+
+exit: 0

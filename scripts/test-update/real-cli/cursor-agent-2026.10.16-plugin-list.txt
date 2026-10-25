@@ -1,0 +1,4 @@
+$ cursor-agent plugin list
+error: too many arguments for 'plugin'. Expected 0 arguments but got 1.
+
+exit: 1

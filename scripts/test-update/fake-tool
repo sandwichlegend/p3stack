@@ -45,8 +45,8 @@ claude_list_json() {
       printf '  {"installPath":"%s","nested":{"a":1},"id":"%s@p3stack"}' "$path" "$plugin"
       continue
     fi
-    printf '  {\n    "id": "%s@p3stack",\n    "version": "%s",\n    "scope": "user",\n    "installPath": "%s"\n  }' "$plugin" "$version" "$path"
-  done < <(cat "$claude_state" 2>/dev/null)
+    printf '  {\n    "id": "%s@p3stack",\n    "version": "%s",\n    "scope": "user",\n    "enabled": true,\n    "installPath": "%s",\n    "installedAt": "2026-01-01T00:00:00.000Z",\n    "lastUpdated": "2026-01-01T00:00:00.000Z",\n    "projectEnabled": true\n  }' "$plugin" "$version" "$path"
+  done < <(LC_ALL=C sort -r "$claude_state" 2>/dev/null)
   printf '\n]\n'
 }
 
@@ -63,7 +63,8 @@ claude_put() {
 
 claude() {
   case "$*" in
-    "plugin marketplace "*) [[ $3 != list ]] || echo p3stack ;;
+    "plugin marketplace "*)
+      [[ $3 != list ]] || printf 'Configured marketplaces:\n\n  ❯ anthropic-plugin-directory\n    Source: Built in (Anthropic Directory)\n\n  ❯ p3stack\n    Source: GitHub (sandwichlegend/p3stack)\n\n' ;;
     "plugin install "*) grep -q "^${3%@*}	" "$claude_state" 2>/dev/null || claude_put "$3" ;;
     "plugin update "*) [[ ${P3STACK_FAKE_SKIP_UPDATE:-} == "${3%@*}" ]] || claude_put "$3";
       if [[ -n ${P3STACK_FAKE_REMOVE_AFTER_UPDATE:-} && $3 == p3stack@p3stack ]]; then
@@ -71,7 +72,14 @@ claude() {
       fi; [[ ${P3STACK_FAKE_FAIL_AFTER_UPDATE:-} != claude || $3 != p3stack-team-kit@p3stack ]] ;;
     "plugin uninstall "*) grep -v "^${3%@*}	" "$claude_state" >"$claude_state.new" || true; mv "$claude_state.new" "$claude_state" ;;
     "plugin list --json") claude_list_json ;;
-    "plugin list") [[ ! -f $claude_state ]] || cut -f1 "$claude_state" | sed 's/$/@p3stack/' ;;
+    "plugin list")
+      if [[ ! -s $claude_state ]]; then echo 'No plugins installed. Use `claude plugin install` to install a plugin.'; return; fi
+      printf 'Installed plugins:\n\n'
+      while IFS=$'\t' read -r plugin path version; do
+        printf '  ❯ %s@p3stack\n    Version: %s\n    Scope: user\n    Status: ✔ enabled\n\n' "$plugin" "$version"
+      done < <(LC_ALL=C sort -r "$claude_state")
+      printf '\n' ;;
+
     "plugin "*) unsupported "$@" ;;
     *) act_as_merge_agent "$@" ;;
   esac
@@ -97,7 +105,33 @@ codex() {
     "plugin marketplace upgrade "*) publish_during_choice; git -C "$codex_market" pull --quiet --ff-only ;;
     "plugin marketplace list") printf 'MARKETPLACE  ROOT\n'; [[ ! -d $codex_market ]] || printf 'p3stack      %s\n' "$codex_market" ;;
     "plugin marketplace remove "*) rm -rf "$codex_market" ;;
-    "plugin list") [[ ! -f $codex_state ]] || cat "$codex_state" ;;
+    "plugin list --json")
+      python3 -I - "$codex_state" "$codex_market" <<'JSON'
+import json, pathlib, sys
+state, market = map(pathlib.Path, sys.argv[1:])
+rows = []
+for plugin in state.read_text().splitlines() if state.exists() else []:
+    name = plugin.split('@')[0]
+    rows.append(dict(pluginId=plugin, name=name, marketplaceName='p3stack', version='1.0.0', installed=True, enabled=True,
+        source=dict(source='local', path=str(market / ('p3stack' if name == 'p3stack' else 'team-kit'))),
+        marketplaceSource=dict(sourceType='git', source='https://github.com/sandwichlegend/p3stack.git'),
+        installPolicy='AVAILABLE', authPolicy='ON_INSTALL'))
+print(json.dumps(dict(installed=rows, available=[]), indent=2))
+JSON
+      ;;
+    "plugin list")
+      [[ -d $codex_market ]] || return 0
+      printf 'Marketplace `p3stack`\n%s/.agents/plugins/marketplace.json\n\n' "$codex_market"
+      if [[ -s $codex_state ]]; then printf 'PLUGIN                    STATUS              VERSION  SOURCE\n'
+      else printf 'PLUGIN                    STATUS         VERSION  SOURCE\n'; fi
+      for plugin in p3stack p3stack-team-kit; do
+        if grep -qx "$plugin@p3stack" "$codex_state" 2>/dev/null; then
+          printf '%-26s%s  1.0.0    %s/%s\n' "$plugin@p3stack" 'installed, enabled' "$codex_market" "$(subtree "$plugin")"
+        else
+          printf '%-26s%s           %s/%s\n' "$plugin@p3stack" 'not installed' "$codex_market" "$(subtree "$plugin")"
+        fi
+      done ;;
+
     "plugin add "*)
       mkdir -p "$(dirname "$codex_state")"
       { grep -vFx "$3" "$codex_state" 2>/dev/null || true; echo "$3"; } >"$codex_state.new"
@@ -114,11 +148,13 @@ codex() {
 }
 
 opencode_cache=${XDG_CACHE_HOME:-$HOME/.cache}/opencode/npm/git-p3stack-0123456789ab
+opencode_state=${XDG_CONFIG_HOME:-$HOME/.config}/opencode/p3stack-installed
 
 opencode_put() {
   local sha stamp dir
   sha=$(git --git-dir="$origin" rev-parse HEAD)
-  mkdir -p "$opencode_cache"
+  mkdir -p "$opencode_cache" "$(dirname "$opencode_state")"
+  printf '%s\n' "$sha" >"$opencode_state"
   stamp=$(printf '%013d' $(($(ls "$opencode_cache" | wc -l) + 1)))
   dir=$opencode_cache/$stamp/node_modules
   export_tree "$sha" "" "$dir/p3stack"
@@ -127,10 +163,14 @@ opencode_put() {
 
 opencode() {
   case "$*" in
-    --version) echo v2.1.3 ;;
-    "plugin add "*) [[ -d $opencode_cache ]] || opencode_put ;;
+    --version) echo 2.1.4 ;;
+    "plugin add "*) [[ -f $opencode_state ]] || opencode_put ;;
     "plugin update "*) opencode_put ;;
-    "plugin remove "*) rm -rf "$opencode_cache" ;;
+    "plugin remove "*) rm -f "$opencode_state" ;;
+    "plugin list")
+      if [[ -f $opencode_state ]]; then
+        printf 'ID       VERSION  SOURCE\np3stack  %.7s  github:sandwichlegend/p3stack\n' "$(cat "$opencode_state")"
+      else echo 'No plugins found'; fi ;;
     "plugin "*) unsupported "$@" ;;
     *) act_as_merge_agent "$@" ;;
   esac

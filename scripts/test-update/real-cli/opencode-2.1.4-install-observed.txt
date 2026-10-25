@@ -1,0 +1,4 @@
+$ opencode plugin add github:sandwichlegend/p3stack
+Plugin "github:sandwichlegend/p3stack" installed and added to <HOME>/.config/opencode/opencode.json
+
+exit: 0

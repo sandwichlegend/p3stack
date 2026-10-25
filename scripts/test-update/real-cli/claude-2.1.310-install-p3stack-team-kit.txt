@@ -1,0 +1,4 @@
+$ claude plugin install p3stack-team-kit@p3stack
+Installing plugin "p3stack-team-kit@p3stack"...✔ Successfully installed plugin: p3stack-team-kit@p3stack (scope: user)
+
+exit: 0

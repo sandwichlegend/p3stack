@@ -1,0 +1,4 @@
+$ opencode plugin remove github:sandwichlegend/p3stack
+Plugin "github:sandwichlegend/p3stack" removed from <HOME>/.config/opencode/opencode.json
+
+exit: 0

@@ -1,0 +1,4 @@
+$ cursor-agent plugin list --json
+error: unknown option '--json'
+
+exit: 1

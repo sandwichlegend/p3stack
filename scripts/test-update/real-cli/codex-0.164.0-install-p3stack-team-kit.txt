@@ -1,0 +1,5 @@
+$ codex plugin add p3stack-team-kit@p3stack
+Added plugin `p3stack-team-kit` from marketplace `p3stack`.
+Installed plugin root: <HOME>/.codex/plugins/cache/p3stack/p3stack-team-kit/1.0.0
+
+exit: 0

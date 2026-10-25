@@ -1,0 +1,4 @@
+$ claude plugin list
+No plugins installed. Use `claude plugin install` to install a plugin.
+
+exit: 0

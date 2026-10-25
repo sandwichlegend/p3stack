@@ -1,0 +1,9 @@
+$ opencode plugin update github:sandwichlegend/p3stack
+Error: Plugin is not configured: github:sandwichlegend/p3stack
+    at <anonymous> (/$bunfs/root/chunk-wdq6kpbn.js:2:1642)
+    at cli.plugin.inspect (/$bunfs/root/chunk-9cknq5hv.js:2:1390)
+    at cli.plugin.inspect (definition) (/$bunfs/root/chunk-wdq6kpbn.js:2:339)
+    at cli.plugin.update (/$bunfs/root/chunk-dk50wveg.js:7:21212)
+    at cli.plugin.update (definition) (/$bunfs/root/chunk-9cknq5hv.js:2:1341)
+
+exit: 1

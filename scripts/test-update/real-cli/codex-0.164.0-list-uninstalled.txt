@@ -1,0 +1,9 @@
+$ codex plugin list
+Marketplace `p3stack`
+<HOME>/.codex/.tmp/marketplaces/p3stack/.agents/plugins/marketplace.json
+
+PLUGIN                    STATUS         VERSION  SOURCE
+p3stack@p3stack           not installed           <HOME>/.codex/.tmp/marketplaces/p3stack/p3stack
+p3stack-team-kit@p3stack  not installed           <HOME>/.codex/.tmp/marketplaces/p3stack/team-kit
+
+exit: 0

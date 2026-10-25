@@ -1,0 +1,5 @@
+$ codex plugin marketplace add sandwichlegend/p3stack
+Added marketplace `p3stack` from https://github.com/sandwichlegend/p3stack.git.
+Installed marketplace root: <HOME>/.codex/.tmp/marketplaces/p3stack
+
+exit: 0

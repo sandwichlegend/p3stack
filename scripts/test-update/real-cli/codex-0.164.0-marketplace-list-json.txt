@@ -1,0 +1,15 @@
+$ codex plugin marketplace list --json
+{
+  "marketplaces": [
+    {
+      "name": "p3stack",
+      "root": "<HOME>/.codex/.tmp/marketplaces/p3stack",
+      "marketplaceSource": {
+        "sourceType": "git",
+        "source": "https://github.com/sandwichlegend/p3stack.git"
+      }
+    }
+  ]
+}
+
+exit: 0

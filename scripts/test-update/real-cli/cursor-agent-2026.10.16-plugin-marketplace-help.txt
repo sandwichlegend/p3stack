@@ -1,0 +1,16 @@
+$ cursor-agent plugin marketplace --help
+Usage: agent plugin marketplace [options] [command]
+
+Manage plugin marketplaces
+
+Options:
+  -h, --help              Display help for command
+
+Commands:
+  add [options] <gitUrl>  Add a plugin marketplace from a git repository URL
+  list [options]          List plugin marketplaces visible to this account
+  remove <nameOrUrl>      Remove a plugin marketplace by name or git repository
+                          URL
+  update <nameOrUrl>      Re-index a plugin marketplace from its git repository
+
+exit: 0
