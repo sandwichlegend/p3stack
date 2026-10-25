@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+[[ $HOME == /tmp/* ]] || { echo "refusing: HOME=$HOME"; exit 99; }
+helper=${P3STACK_TEST_HELPER:?refusing: missing test helper}
+python3 -I "$helper/safe-home.py" check --owned
 
 tool=$(basename "$0")
 origin=$P3STACK_REPO_URL
@@ -90,9 +93,19 @@ codex_market=$codex_home/.tmp/marketplaces/p3stack
 codex_state=$codex_home/plugins/installed.txt
 
 codex() {
+  if [[ ! -d $codex_home ]]; then
+    printf 'WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "%s", but that path does not exist\nError: failed to resolve CODEX_HOME\n\nCaused by:\n    CODEX_HOME points to "%s", but that path does not exist\n' "$codex_home" "$codex_home" >&2
+    return 1
+  fi
   case "$*" in
     "plugin marketplace add "*) [[ -d $codex_market ]] || git clone --quiet "$origin" "$codex_market" ;;
-    "plugin marketplace upgrade "*) git -C "$codex_market" pull --quiet --ff-only ;;
+    "plugin marketplace upgrade "*)
+      git -C "$codex_market" pull --quiet --ff-only
+      if [[ -f $codex_state ]]; then
+        while IFS= read -r installed; do
+          export_tree "$(git -C "$codex_market" rev-parse HEAD)" "$(subtree "${installed%@*}")" "$codex_home/plugins/cache/p3stack/${installed%@*}/1.0.0"
+        done <"$codex_state"
+      fi ;;
     "plugin marketplace list") printf 'MARKETPLACE  ROOT\n'; [[ ! -d $codex_market ]] || printf 'p3stack      %s\n' "$codex_market" ;;
     "plugin marketplace remove "*) rm -rf "$codex_market" ;;
     "plugin list --json")
@@ -145,7 +158,11 @@ opencode_put() {
   sha=$(git --git-dir="$origin" rev-parse HEAD)
   mkdir -p "$opencode_cache" "$(dirname "$opencode_state")"
   printf '%s\n' "$sha" >"$opencode_state"
-  stamp=$(printf '%013d' $(($(ls "$opencode_cache" | wc -l) + 1)))
+  stamp=0000000000001
+  if [[ ${P3STACK_FAKE_OPENCODE_NEW_FOLDER:-} == 1 ]]; then
+    stamp=$(printf '%013d' $(($(ls "$opencode_cache" | wc -l) + 1)))
+  fi
+  printf '{"plugins":["github:sandwichlegend/p3stack"]}\n' >"$(dirname "$opencode_state")/opencode.json"
   dir=$opencode_cache/$stamp/node_modules
   export_tree "$sha" "" "$dir/p3stack"
   printf '{\n  "packages": {\n    "node_modules/p3stack": {\n      "resolved": "git+ssh://git@github.com/sandwichlegend/p3stack.git#%s"\n    }\n  }\n}\n' "$sha" >"$dir/.package-lock.json"
@@ -156,8 +173,12 @@ opencode() {
     --version) echo 2.1.4 ;;
     "plugin add "*) [[ -f $opencode_state ]] || opencode_put ;;
     "plugin update "*) opencode_put ;;
-    "plugin remove "*) rm -f "$opencode_state" ;;
+    "plugin remove "*) rm -f "$opencode_state"; printf '{"plugins":[]}\n' >"$(dirname "$opencode_state")/opencode.json" ;;
     "plugin list")
+      local count=0
+      [[ ! -f $HOME/opencode-list-count ]] || count=$(cat "$HOME/opencode-list-count")
+      count=$((count+1)); echo "$count" >"$HOME/opencode-list-count"
+      if [[ ${P3STACK_FAKE_OPENCODE_STALE:-} == empty && $count -le ${P3STACK_FAKE_OPENCODE_STALE_CALLS:-99999} ]]; then echo 'No plugins found'; return; fi
       if [[ -f $opencode_state ]]; then
         printf 'ID       VERSION  SOURCE\np3stack  %.7s  github:sandwichlegend/p3stack\n' "$(cat "$opencode_state")"
       else echo 'No plugins found'; fi ;;

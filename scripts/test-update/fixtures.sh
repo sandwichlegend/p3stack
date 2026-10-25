@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+[[ $HOME == /tmp/* ]] || { echo "refusing: HOME=$HOME"; exit 99; }
 
 scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin edit-after-failure team-kit-auto-updated tool-without-p3stack"
 scenario=${1:-}
@@ -7,13 +8,16 @@ scenario=${1:-}
 
 here=$(cd "$(dirname "$0")" && pwd)
 installer=$(cd "$here/../.." && pwd)/install.sh
-mkdir -p "$2"
-dir=$(cd "$2" && pwd)
+python3 -I "$here/safe-home.py" check
+[[ $2 == /tmp/* && -d $2 && ! -L $2 && -z $(ls -A "$2") ]] || { echo "refusing: fixture target must be new and empty under /tmp" >&2; exit 99; }
+dir=$(cd "$2" && pwd -P)
+[[ $dir == /tmp/* ]] || exit 99
+created_home=$(python3 -I "$here/safe-home.py" create "$dir")
+ln -s "${created_home##*/}" "$dir/home"
 home=$dir/home
 release=$dir/release
 origin=$dir/origin.git
-rm -rf "$home" "$release" "$origin" "$dir/bin" "$dir/sys"
-mkdir -p "$home" "$dir/bin" "$dir/sys"
+mkdir -p "$home/.codex" "$dir/bin" "$dir/sys"
 
 for command in bash env git tar awk sed grep sha256sum shasum find sort diff cp mv rm mkdir cat ln ls head tail tr cut \
   dirname basename mktemp touch chmod wc uname paste readlink sleep date python3 xcode-select kill cmp rmdir ps; do
@@ -33,12 +37,17 @@ for tool in $tools; do ln -s "$here/fake-tool" "$dir/bin/$tool"; done
 environment() {
   cat <<EOF
 export HOME='$home'
+export P3STACK_TEST_HELPER='$here'
 export PATH='$dir/bin:$dir/sys'
 export P3STACK_REPO_URL='$origin'
 export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache' XDG_CONFIG_HOME='$home/.config' XDG_DATA_HOME='$home/.local/share' XDG_STATE_HOME='$home/.local/state'
 unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE
 EOF
 }
+
+env_tmp=$(mktemp "$dir/.env.XXXXXXXX")
+environment >"$env_tmp"
+mv "$env_tmp" "$dir/env.sh"
 
 skill() {
   mkdir -p "$release/$1"
@@ -91,7 +100,8 @@ command git init --quiet --bare --initial-branch=main "$origin"
 git push --quiet "$origin" main
 
 (
-  eval "$(environment)"
+  source "$dir/env.sh"
+  python3 -I "$here/safe-home.py" check --owned
   P3STACK_NONINTERACTIVE=1 bash "$installer" install
 ) >"$dir/setup.log" 2>&1 || { cat "$dir/setup.log" >&2; exit 1; }
 
@@ -157,17 +167,17 @@ git push --quiet "$origin" main
 git rev-parse HEAD~1 HEAD >"$dir/releases"
 
 case $scenario in
-  auto-updated|stale-plugin) (eval "$(environment)"; claude plugin update p3stack@p3stack) ;;
+  auto-updated|stale-plugin) (source "$dir/env.sh"; python3 -I "$here/safe-home.py" check --owned; claude plugin update p3stack@p3stack) ;;
   team-kit-auto-updated)
-    (eval "$(environment)"; claude plugin update p3stack-team-kit@p3stack)
+    (source "$dir/env.sh"; python3 -I "$here/safe-home.py" check --owned; claude plugin update p3stack-team-kit@p3stack)
     echo "An edit made after the background auto-update." >>"$(installed claude-team-kit skills/deslop/SKILL.md)"
     ;;
   edit-after-failure)
-    (eval "$(environment)"; P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_FAIL_AFTER_UPDATE=codex bash "$installer" update) >"$dir/failed-update.log" 2>&1 || true
+    (source "$dir/env.sh"; python3 -I "$here/safe-home.py" check --owned; P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_FAIL_AFTER_UPDATE=codex bash "$installer" update) >"$dir/failed-update.log" 2>&1 || true
     echo "An edit made after the failed update." >>"$(installed codex skills/poteto-mode/SKILL.md)"
     ;;
   tool-without-p3stack) mkdir -p "$home/.cursor" ;;
 esac
 
-environment
+cat "$dir/env.sh"
 echo "# Run: bash '$installer' update"

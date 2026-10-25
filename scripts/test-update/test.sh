@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Usage: scripts/test-update/test.sh [case...]
 set -euo pipefail
+[[ $HOME == /tmp/* ]] || { echo "refusing: HOME=$HOME"; exit 99; }
 
 here=$(cd "$(dirname "$0")" && pwd)
 installer=$(cd "$here/../.." && pwd)/install.sh
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/p3stack-tests.XXXXXX")
+python3 -I "$here/safe-home.py" check
+scratch=$(mktemp -d /tmp/p3stack-tests.XXXXXXXX)
+bootstrap=$(python3 -I "$here/safe-home.py" create "$scratch")
+export HOME=$bootstrap CLAUDE_CONFIG_DIR=$bootstrap/.claude CODEX_HOME=$bootstrap/.codex
+export XDG_CONFIG_HOME=$bootstrap/.config XDG_DATA_HOME=$bootstrap/.local/share XDG_CACHE_HOME=$bootstrap/.cache XDG_STATE_HOME=$bootstrap/.local/state
 trap 'rm -rf "$scratch"' EXIT
 failures=0
 case_failed=0
@@ -15,9 +20,8 @@ fail() {
 }
 
 setup() {
-  dir=$scratch/$1
-  rm -rf "$dir"
-  "$here/fixtures.sh" "$2" "$dir" >"$dir.env"
+  dir=$(mktemp -d "$scratch/$1.XXXXXXXX")
+  "$here/fixtures.sh" "$2" "$dir" >"$dir.stdout"
   home=$dir/home
   old=$(sed -n 1p "$dir/releases")
   new=$(sed -n 2p "$dir/releases")
@@ -26,12 +30,19 @@ setup() {
   codex=$home/.codex/plugins/cache/p3stack/p3stack/1.0.0
 }
 
+load_fixture() {
+  [[ -s $dir/env.sh && ! -L $dir/env.sh ]] || { echo "refusing: missing fixture env file" >&2; return 99; }
+  source "$dir/env.sh" || return 99
+  [[ $HOME == "$dir/home" ]] || return 99
+  python3 -I "$here/safe-home.py" check --owned
+}
+
 update_answering() {
   local answer_lines=$1
   shift
   printf '%b' "$answer_lines" >"$dir/answers"
   (
-    eval "$(cat "$dir.env")"
+    load_fixture || exit 99
     export P3STACK_TTY=$dir/answers "$@"
     bash "$installer" ${action:-update} ${tools:-}
   ) >"$dir/out" 2>&1 || { [[ ${expect_failure:-0} == 1 ]] || fail "install.sh update exited nonzero"; return; }
@@ -273,7 +284,7 @@ test_cli_terminal() {
   node=$(command -v node)
   setup cli-terminal both
   (
-    eval "$(cat "$dir.env")"
+    load_fixture || exit 99
     export PATH="$PATH:$(dirname "$node")" P3STACK_HANDOFF=1
     python3 -I "$here/terminal.py" "$dir/out" k node "$(dirname "$installer")/cli/bin/p3stack.mjs" update --tools claude
   ) || fail "p3stack update in a terminal exited nonzero"
@@ -408,7 +419,7 @@ test_only_one_update_runs_at_a_time() {
   setup update-lock both
   mkfifo "$dir/keyboard"
   (
-    eval "$(cat "$dir.env")"
+    load_fixture || exit 99
     export P3STACK_TTY=$dir/keyboard
     exec bash "$installer" update
   ) >"$dir/holder.out" 2>&1 &
@@ -475,6 +486,9 @@ test_backup_hash_verification_stops_install() {
   real_cp=$(command -v cp)
   cat >"$dir/bin/cp" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 "$real_cp" "\$@" || exit
 case "\$*" in */.p3stack/edits/*) echo corrupt >>"\${@: -1}" ;; esac
 EOF
@@ -487,7 +501,7 @@ EOF
 
 test_auto_updated_folder_missing_warns_once() {
   setup auto-missing auto-updated
-  (eval "$(cat "$dir.env")"; claude plugin update p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; claude plugin update p3stack-team-kit@p3stack)
   rm -rf "$claude_old" "${claude_old/p3stack\/p3stack\//p3stack\/p3stack-team-kit\/}"
   update_answering ""
   [[ $(grep -c "Edits made before the auto-update may be" "$dir/out") == 1 ]] || fail "expected one missing-folder warning"
@@ -497,7 +511,7 @@ test_background_auto_updates_recover_opencode_folder() {
   setup auto-opencode clean
   local package=$home/.cache/opencode/npm/git-p3stack-0123456789ab
   echo "My OpenCode edit." >>"$package/0000000000001/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md"
-  (eval "$(cat "$dir.env")"; opencode plugin update github:sandwichlegend/p3stack)
+  (load_fixture || exit 99; opencode plugin update github:sandwichlegend/p3stack)
   update_answering "n\n"
   has "$package/0000000000003/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md" "My OpenCode edit."
   says "before the background auto-update"
@@ -525,6 +539,9 @@ stop_at_record_write() {
   real_cp=$(command -v cp)
   cat >"$dir/bin/cp" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 case "\$*" in */.p3stack/installed/*) kill -TERM \$PPID; exit 1 ;; esac
 exec "$real_cp" "\$@"
 EOF
@@ -611,6 +628,9 @@ test_missing_root_journal_finishes_after_rebuild() {
   real_cp=$(command -v cp)
   cat >"$dir/bin/cp" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 case "\$*" in *'/.p3stack/repo/p3stack '*) echo injected copy failure >&2; exit 1 ;; esac
 exec "$real_cp" "\$@"
 EOF
@@ -659,6 +679,9 @@ test_unknown_installed_commit_keeps_record_and_journal() {
   rm "$dir/bin/codex"
   cat >"$dir/bin/codex" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 [[ \$* != "plugin marketplace list" ]] || exit 1
 exec "$dir/real/codex" "\$@"
 EOF
@@ -707,6 +730,9 @@ test_unresolved_install_listing_stops_only_that_tool() {
   rm "$dir/bin/claude"
   cat >"$dir/bin/claude" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 case "\$*" in
   "plugin list") exit 0 ;;
   "plugin list --json") echo '[{"id":"p3stack@p3stack"},{"id":"p3stack-team-kit@p3stack"}]'; exit 0 ;;
@@ -733,7 +759,7 @@ test_team_kit_only_auto_update_keeps_old_edit() {
   setup team-kit-auto clean
   local deslop=skills/deslop/SKILL.md team=$home/.claude/plugins/cache/p3stack/p3stack-team-kit
   echo "TEAMKIT_OLD_EDIT" >>"$team/${old:0:12}/$deslop"
-  (eval "$(cat "$dir.env")"; claude plugin update p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; claude plugin update p3stack-team-kit@p3stack)
   update_answering "" P3STACK_NONINTERACTIVE=1
   has "$team/${new:0:12}/$deslop" "TEAMKIT_OLD_EDIT"
   has "$(backup_for claude "$deslop")" "TEAMKIT_OLD_EDIT"
@@ -765,7 +791,7 @@ test_opencode_auto_update_scans_both_folders() {
   setup opencode-both clean
   local package=$home/.cache/opencode/npm/git-p3stack-0123456789ab skill=node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md
   echo "OLD_OPENCODE_EDIT" >>"$package/0000000000001/$skill"
-  (eval "$(cat "$dir.env")"; opencode plugin update github:sandwichlegend/p3stack)
+  (load_fixture || exit 99; opencode plugin update github:sandwichlegend/p3stack)
   echo "ACTIVE_OPENCODE_EDIT" >>"$package/0000000000002/$skill"
   update_answering "" P3STACK_NONINTERACTIVE=1
   has "$package/0000000000003/$skill" "ACTIVE_OPENCODE_EDIT"
@@ -787,7 +813,7 @@ test_deliberate_revert_is_an_edit() {
 
 test_hand_updated_tool_is_lag_not_edit() {
   setup hand-updated clean
-  (eval "$(cat "$dir.env")"; codex plugin marketplace upgrade p3stack; codex plugin add p3stack-team-kit@p3stack) >/dev/null
+  (load_fixture || exit 99; codex plugin marketplace upgrade p3stack; codex plugin add p3stack-team-kit@p3stack) >/dev/null
   local next
   next=$(push_release change_deslop_again)
   update_answering ""
@@ -931,6 +957,9 @@ release_while_choosing() {
   rm "$dir/bin/codex"
   cat >"$dir/bin/codex" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 if [[ \$* == 'plugin marketplace upgrade p3stack' && ! -f '$dir/pushed' ]]; then
   git -C '$dir/release' push --quiet '$dir/origin.git' main || exit 1
   touch '$dir/pushed'
@@ -982,6 +1011,9 @@ fail_cursor_copy() {
   real_cp=$(command -v cp)
   cat >"$dir/bin/cp" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 case "\$*" in *'/.p3stack/repo/$subtree '*) echo injected copy failure >&2; exit 1 ;; esac
 exec '$real_cp' "\$@"
 EOF
@@ -1051,7 +1083,7 @@ test_stale_replay_rolls_back_then_scans() {
   rm "$dir/bin/cp"
   local third
   third=$(push_release change_deslop_again)
-  (eval "$(cat "$dir.env")"; codex plugin marketplace upgrade p3stack; codex plugin add p3stack@p3stack; codex plugin add p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; codex plugin marketplace upgrade p3stack; codex plugin add p3stack@p3stack; codex plugin add p3stack-team-kit@p3stack)
   tools=codex update_answering "a\n"
   asked 1
   says "you and p3stack both changed this skill"
@@ -1075,7 +1107,7 @@ test_replay_pre_update_content_stays_an_open_question() {
 
 test_claude_uninstalled_through_tool_ignores_leftovers() {
   setup uninstalled-claude both
-  (eval "$(cat "$dir.env")"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
   tools=claude action=install update_answering ""
   asked 0
   recorded claude
@@ -1087,7 +1119,7 @@ test_claude_uninstalled_through_tool_ignores_leftovers() {
 test_claude_uninstalled_without_record_backs_up_cache() {
   setup uninstalled-no-record both
   rm -rf "$home/.p3stack/installed/claude"
-  (eval "$(cat "$dir.env")"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
   tools=claude action=install update_answering ""
   asked 0
   recorded claude
@@ -1096,7 +1128,7 @@ test_claude_uninstalled_without_record_backs_up_cache() {
 
 test_codex_uninstalled_through_tool_drops_record() {
   setup uninstalled-codex copy
-  (eval "$(cat "$dir.env")"; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack)
   tools=codex update_answering ""
   asked 0
   recorded codex
@@ -1124,6 +1156,9 @@ test_uninstall_failure_keeps_journal_and_sources() {
   rm "$dir/bin/codex"
   cat >"$dir/bin/codex" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 [[ \$* != 'plugin remove p3stack-team-kit@p3stack' ]] || exit 1
 exec '$dir/real/codex' "\$@"
 EOF
@@ -1199,7 +1234,7 @@ test_accept_actual_release_removal_reports_the_removal() {
 
 test_codex_real_listing_reinstalls_removed_plugins() {
   setup codex-reallist copy
-  (eval "$(cat "$dir.env")"; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack)
   tools=codex update_answering "" P3STACK_NONINTERACTIVE=1
   recorded codex
   is_release "$new" "$codex/skills/swarm/SKILL.md" skills/swarm/SKILL.md
@@ -1210,13 +1245,13 @@ test_codex_real_listing_reinstalls_removed_plugins() {
 test_two_leftover_versions_back_up_only_their_own_edits() {
   setup two-leftovers auto-updated
   echo SECOND_LEFTOVER_EDIT >>"$claude/skills/poteto-mode/SKILL.md"
-  (eval "$(cat "$dir.env")"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
   tools=claude action=install update_answering "" P3STACK_NONINTERACTIVE=1
   recorded claude
   has "$(find "$home/.p3stack/edits/claude" -path "*/p3stack/${old:0:12}/skills/poteto-mode/SKILL.md" | head -1)" 'Write the code test first.'
   has "$(find "$home/.p3stack/edits/claude" -path "*/p3stack/${new:0:12}/skills/poteto-mode/SKILL.md" | head -1)" SECOND_LEFTOVER_EDIT
   [[ $(find "$home/.p3stack/edits/claude" -type f | wc -l) == 2 ]] || fail "pristine files from another release were called user edits"
-  (eval "$(cat "$dir.env")"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+  (load_fixture || exit 99; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
   tools=claude action=install update_answering "" P3STACK_NONINTERACTIVE=1
   [[ $(find "$home/.p3stack/edits/claude" -type f | wc -l) == 2 ]] || fail "identical leftovers weren't deduplicated"
   never_says 'backup failed'
@@ -1229,6 +1264,9 @@ fail_listing_at() {
   rm "$dir/bin/$tool"
   cat >"$dir/bin/$tool" <<WRAP
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 if [[ \$* == '$command' ]]; then
   n=0
   [[ ! -f '$dir/list-count' ]] || n=\$(cat '$dir/list-count')
@@ -1242,8 +1280,8 @@ WRAP
 
 test_listing_failure_stops_at_every_detection_phase() {
   local number
-  for number in 1 3 4 5; do
-    setup listing-failure-$number kept
+  for number in 1 3 4 5 6 7 8; do
+    setup listing-failure-$number auto-updated
     fail_listing_at claude "$number" 'plugin list --json'
     tools=claude expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
     says 'claude plugin list --json'
@@ -1269,7 +1307,10 @@ late_codex_edits() {
   rm "$dir/bin/codex"
   cat >"$dir/bin/codex" <<WRAP
 #!/usr/bin/env bash
-if [[ \$* == 'plugin marketplace upgrade p3stack' && ! -f '$dir/late-written' ]]; then
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
+if [[ \$* == 'plugin marketplace add sandwichlegend/p3stack' && ! -f '$dir/late-written' ]]; then
   echo LATE_USER_EDIT_R4 >>'$codex/skills/poteto-mode/SKILL.md'
   echo LATE_ADDED_FILE_R4 >'$codex/skills/poteto-mode/mine.txt'
   touch '$dir/late-written'
@@ -1296,6 +1337,9 @@ test_codex_late_edit_and_added_file_survive() {
 late_cursor_edits() {
   cat >"$dir/bin/git" <<WRAP
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 case "\$*" in *'pull --ff-only'*)
   echo MY_LATE_EDIT >>'$home/.cursor/plugins/local/p3stack/skills/recall/SKILL.md'
   echo MY_LATE_FILE >'$home/.cursor/plugins/local/p3stack/skills/recall/mine.txt' ;;
@@ -1323,6 +1367,9 @@ test_codex_moving_marketplace_keeps_provenance_honest() {
   rm "$dir/bin/codex"
   cat >"$dir/bin/codex" <<WRAP
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 if [[ \$* == 'plugin add p3stack-team-kit@p3stack' && ! -f '$dir/published' ]]; then
   echo UPSTREAM_THREE >>'$dir/release/p3stack/skills/swarm/SKILL.md'
   git -C '$dir/release' -c user.name=fixture -c user.email=fixture@example.com commit -qam third
@@ -1371,7 +1418,7 @@ test_opencode_uninstalled_listing_backs_up_leftovers() {
   local root
   root=$(find "$home/.cache/opencode/npm" -path '*/p3stack/p3stack/skills/poteto-mode/SKILL.md' | head -1)
   echo OPENCODE_LEFTOVER_EDIT >>"$root"
-  (eval "$(cat "$dir.env")"; opencode plugin update github:sandwichlegend/p3stack; opencode plugin remove github:sandwichlegend/p3stack)
+  (load_fixture || exit 99; opencode plugin update github:sandwichlegend/p3stack; opencode plugin remove github:sandwichlegend/p3stack)
   tools=opencode action=install update_answering "" P3STACK_NONINTERACTIVE=1
   [[ -n $(grep -rl OPENCODE_LEFTOVER_EDIT "$home/.p3stack/edits/opencode" 2>/dev/null) ]] || fail 'OpenCode leftover edit has no backup'
   never_says 'No edited files.'
@@ -1403,6 +1450,9 @@ test_failed_fetch_warns_and_recovers_cached_journal_only() {
   rm "$dir/bin/cp"
   cat >"$dir/bin/git" <<WRAP
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 case "\$*" in *'fetch --quiet origin'*) echo INJECTED_FETCH_FAILURE >&2; exit 1 ;; esac
 exec '$dir/sys/git' "\$@"
 WRAP
@@ -1424,6 +1474,9 @@ test_codex_records_distinct_commits_between_adds() {
   rm "$dir/bin/codex"
   cat >"$dir/bin/codex" <<WRAP
 #!/usr/bin/env bash
+set -euo pipefail
+[[ \$HOME == /tmp/* ]] || { echo "refusing: HOME=\$HOME"; exit 99; }
+python3 -I '$here/safe-home.py' check --owned
 if [[ \$* == 'plugin add p3stack@p3stack' ]]; then
   '$dir/realbin/codex' "\$@" || exit 1
   touch '$dir/first-added'
@@ -1465,13 +1518,68 @@ test_fake_listings_match_real_captures() {
     tool=${capture%%-*}
     args='plugin list'
     [[ $capture != *json.txt ]] || args+=' --json'
-    (eval "$(cat "$dir.env")"; "$tool" $args) >"$dir/listing"
+    (load_fixture || exit 99; "$tool" $args) >"$dir/listing"
     python3 "$here/check-cli-format.py" "$capture" "$dir/listing" "$home" "$old" || fail "$tool listing differs from its real capture"
   done
-  (eval "$(cat "$dir.env")"; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack; codex plugin list) >"$dir/listing"
+  (load_fixture || exit 99; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack; codex plugin list) >"$dir/listing"
   python3 "$here/check-cli-format.py" codex-0.164.0-list-removed.txt "$dir/listing" "$home" "$old" || fail "Codex removed listing differs from its real capture"
-  (eval "$(cat "$dir.env")"; opencode plugin remove github:sandwichlegend/p3stack; opencode plugin list) >"$dir/listing"
+  (load_fixture || exit 99; opencode plugin remove github:sandwichlegend/p3stack; opencode plugin list) >"$dir/listing"
   python3 "$here/check-cli-format.py" opencode-2.1.4-plugin-list.txt "$dir/listing" "$home" "$old" || fail "OpenCode removed listing differs from its real capture"
+}
+
+test_fresh_codex_home_installs() {
+  setup fresh-codex clean
+  rm -rf "$home/.codex" "$home/.p3stack/installed/codex"
+  tools=codex action=install update_answering "" P3STACK_NONINTERACTIVE=1
+  exists "$codex/skills/poteto-mode/SKILL.md"
+  recorded codex
+}
+
+test_codex_upgrade_does_not_call_release_files_user_edits() {
+  setup codex-release interrupted
+  tools=codex update_answering "a\n"
+  is_release "$new" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+  never_says 'after the scan'
+}
+
+test_opencode_stale_empty_listing_keeps_active_edit() {
+  setup opencode-stale clean
+  local file=$home/.cache/opencode/npm/git-p3stack-0123456789ab/0000000000001/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md
+  echo STALE_OPENCODE_EDIT_R5 >>"$file"
+  tools=opencode expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_OPENCODE_STALE=empty
+  has "$file" STALE_OPENCODE_EDIT_R5
+  record_is opencode "$old"
+  never_says '$ opencode plugin add'
+  never_says 'record was dropped'
+  says 'disagrees'
+}
+
+test_opencode_stale_listing_retries_when_attended() {
+  setup opencode-retry clean
+  local file=$home/.cache/opencode/npm/git-p3stack-0123456789ab/0000000000001/node_modules/p3stack/p3stack/skills/poteto-mode/SKILL.md
+  echo STALE_RETRY_EDIT_R5 >>"$file"
+  rm -f "$home/opencode-list-count"
+  tools=opencode update_answering "" P3STACK_FAKE_OPENCODE_STALE=empty P3STACK_FAKE_OPENCODE_STALE_CALLS=2
+  has "$file" STALE_RETRY_EDIT_R5
+  has "$(backup_for opencode skills/poteto-mode/SKILL.md)" STALE_RETRY_EDIT_R5
+  recorded opencode
+}
+
+test_test_helpers_refuse_unsafe_home_and_missing_env() {
+  setup guard clean
+  local key before after
+  before=$(find "$home" -type f -exec sha256sum {} + | LC_ALL=C sort)
+  for key in HOME CLAUDE_CONFIG_DIR CODEX_HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME; do
+    if (load_fixture || exit 99; export "$key=/home/liam"; bash "$here/fixtures.sh" clean "$dir") >"$dir/refused" 2>&1; then fail "fixtures accepted unsafe $key"; fi
+    if (load_fixture || exit 99; export "$key=/home/liam"; "$dir/bin/codex" plugin list) >"$dir/refused" 2>&1; then fail "fake accepted unsafe $key"; fi
+    if (load_fixture || exit 99; export "$key=/home/liam"; bash "$here/test.sh" clean) >"$dir/refused" 2>&1; then fail "tests accepted unsafe $key"; fi
+  done
+  if bash "$here/fixtures.sh" clean "$dir" >"$dir/refused" 2>&1; then fail 'fixtures accepted a nonempty target'; fi
+  mv "$dir/env.sh" "$dir/saved-env"
+  if (load_fixture || exit 99; bash "$installer" update) >"$dir/refused" 2>&1; then fail 'missing env file did not stop execution'; fi
+  mv "$dir/saved-env" "$dir/env.sh"
+  after=$(find "$home" -type f -exec sha256sum {} + | LC_ALL=C sort)
+  [[ $before == "$after" ]] || fail 'refused command changed the fixture home'
 }
 
 cases=$(declare -F | awk '$3 ~ /^test_/ { sub(/^test_/, "", $3); print $3 }')
