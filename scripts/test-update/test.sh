@@ -1680,6 +1680,13 @@ WRAP
   done
 }
 
+test_fixture_paths_are_shell_quoted() {
+  dir=$(mktemp -d "$scratch/quote'home.XXXXXXXX")
+  "$here/fixtures.sh" clean "$dir" >"$dir.stdout"
+  (load_fixture || exit 99; codex plugin list) >"$dir/listing"
+  has "$dir/listing" 'p3stack@p3stack'
+}
+
 test_test_helpers_refuse_unsafe_home_and_missing_env() {
   setup guard clean
   local key before after
