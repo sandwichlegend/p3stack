@@ -225,7 +225,7 @@ claude_uninstall() {
 
 claude_root() {
   local list root="" pattern="\"id\": *\"$1@$marketplace\"[^}]*\"installPath\": *\"([^\"]*)\""
-  list=$(claude plugin list --json </dev/null 2>/dev/null) || return 1
+  list=$(query claude plugin list --json) || return 1
   if has node; then
     root=$(printf '%s' "$list" | node -e '
       let data=""; process.stdin.on("data", x => data += x).on("end", () => {
@@ -563,49 +563,76 @@ plugin_installed() {
   local tool=$1 plugin=$2 listing
   case $tool in
     claude)
-      listing=$(claude plugin list --json </dev/null 2>/dev/null) || return 2
+      listing=$(query claude plugin list --json) || return 2
       [[ $listing == *\"$plugin@$marketplace\"* ]]
       ;;
     codex)
-      if listing=$(codex plugin list </dev/null 2>/dev/null); then
-        lists "$listing" "$plugin@$marketplace"
-      else
-        listing=$(codex plugin marketplace list </dev/null 2>/dev/null) || return 2
-        lists "$listing" "$marketplace" && codex_root "$plugin" >/dev/null
-      fi
+      listing=$(query codex plugin list) || return 2
+      awk -v name="$plugin@$marketplace" '$1 == name && $2 ~ /^installed/ { found = 1 } END { exit !found }' <<<"$listing"
       ;;
     cursor) [[ -d $cursor_local/$plugin ]] ;;
-    opencode) opencode_package >/dev/null ;;
+    opencode)
+      listing=$(query opencode plugin list) || return 2
+      awk -v source="$opencode_spec" '$1 == "p3stack" && $3 == source { found = 1 } END { exit !found }' <<<"$listing"
+      ;;
+  esac
+}
+
+listing_failed() {
+  warn "couldn't list p3stack in $(tool_label "$1"), so nothing was installed there. Check the failed plugin listing command above and run p3stack update again."
+  stopped+="$1 "
+}
+
+leftover_roots() {
+  local tool=$1 plugin=$2 dir
+  case $tool in
+    claude) printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/$marketplace/$plugin"/* ;;
+    codex) printf '%s\n' "$codex_home/plugins/cache/$marketplace/$plugin"/* ;;
+    opencode)
+      for dir in "${XDG_CACHE_HOME:-$HOME/.cache}"/opencode/npm/git-p3stack-*/*/node_modules/p3stack; do
+        printf '%s\n' "$dir/$(subtree "$plugin")"
+      done ;;
+  esac
+}
+
+leftover_commit() {
+  local tool=$1 plugin=$2 root=$3 lock pattern='#([0-9a-f]{40})'
+  case $tool in
+    claude) release_commit "${root##*/}" ;;
+    codex) record_commit "$tool" "$plugin" ;;
+    opencode)
+      lock=$(cat "$(dirname "$(dirname "$root")")/.package-lock.json" 2>/dev/null) || return 1
+      [[ $lock =~ $pattern ]] && release_commit "${BASH_REMATCH[1]}" ;;
   esac
 }
 
 prepare_installation() {
-  local tool=$1 plugin status root path expected actual leftover
+  local tool=$1 plugin status root path expected actual leftover commit tree version saved backed
   for plugin in "${plugins[@]}"; do
     status=0
     plugin_installed "$tool" "$plugin" || status=$?
     ((status)) || continue
-    if ((status == 2)); then
-      warn "couldn't list p3stack in $(tool_label "$tool"), so nothing was installed there. Check the tool's plugin listing and run p3stack update again."
-      stopped+="$tool "
-      return 0
-    fi
-    leftover=0
+    if ((status == 2)); then listing_failed "$tool"; return 0; fi
+    leftover=0 backed=0
     [[ ! -f $records/$tool/$plugin.commit ]] || leftover=1
-    case $tool in
-      claude) printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/$marketplace/$plugin"/* ;;
-      codex) printf '%s\n' "$codex_home/plugins/cache/$marketplace/$plugin"/* ;;
-      *) : ;;
-    esac >"$work/leftover-roots"
+    leftover_roots "$tool" "$plugin" >"$work/leftover-roots"
     while IFS= read -r root; do
       [[ -d $root ]] || continue
       leftover=1
+      version=${root##*/}
+      [[ $tool != opencode ]] || version=$(basename "$(dirname "$(dirname "$(dirname "$root")")")")
+      tree=""
+      commit=$(leftover_commit "$tool" "$plugin" "$root" || true)
+      [[ -z $commit ]] || tree=$(release_tree "$commit" || true)
       if ! installed_paths "$tool" "$root" >"$work/leftover-paths"; then stopped+="$tool "; return 0; fi
       while IFS= read -r path; do
-        expected=$(release_hash "$records/$tool" "$plugin" "$path")
+        expected=""
+        [[ -z $tree ]] || expected=$(release_hash "$tree" "$plugin" "$path")
         actual=$(file_hash "$root/$path") || { stopped+="$tool "; return 0; }
         [[ -n $expected && $actual == "$expected" ]] && continue
-        if ! save_copy "$tool" "$gen_stamp-leftover" "$plugin/$path" "$root/$path" >/dev/null; then stopped+="$tool "; return 0; fi
+        if ! saved=$(backup_copy "$tool" "$gen_stamp-leftover" "$plugin/$version/$path" "$root/$path"); then stopped+="$tool "; return 0; fi
+        backed=1
+        say "  Leftover $plugin/$version/$path is saved in $(tilde "$saved")."
       done <"$work/leftover-paths"
     done <"$work/leftover-roots"
     if ((leftover)); then
@@ -614,15 +641,19 @@ prepare_installation() {
         awk -F '\t' -v prefix="$plugin/" 'index($1, prefix) != 1' "$records/$tool/bases" >"$work/bases.leftover" &&
           mv "$work/bases.leftover" "$records/$tool/bases" || return 1
       fi
-      say "  $plugin isn't installed in $(tool_label "$tool"). Leftover files that differ from its record are saved in $(tilde "$edits_home/$tool")/, and its record was dropped."
+      if ((backed)); then saved="Changed leftover files were backed up above."
+      else saved="No changed leftover files needed a backup."; fi
+      say "  $plugin isn't installed in $(tool_label "$tool"). $saved Its record was dropped."
     fi
   done
 }
 
 has_p3stack() {
-  local plugin
+  local plugin status
   for plugin in "${plugins[@]}"; do
-    ! plugin_installed "$1" "$plugin" || return 0
+    status=0
+    plugin_installed "$1" "$plugin" || status=$?
+    case $status in 0) return 0 ;; 2) return 2 ;; esac
   done
   return 1
 }
@@ -728,7 +759,7 @@ class_policy() {
       unattended_message="No one is at the keyboard to choose, so p3stack's versions go into $tool. Old copies are saved in $(tilde "$edits_home/${row_tool[i]}")/."
       ;;
     deleted)
-      keep_note="You deleted ${row_path[i]}; p3stack's update put it back."
+      keep_note="You deleted ${row_plugin[i]}/${row_path[i]}; p3stack's update put it back."
       ;;
   esac
   [[ ${row_kind[i]} != old ]] || scan_note+=" (from before the auto-update)"
@@ -931,7 +962,12 @@ same_file() { cmp -s "$1" "$2" && [[ $(ls -ld "$1" | cut -c1-10) == "$(ls -ld "$
 
 # Prints the new backup's path. Backups are never overwritten, so each call writes into a generation folder of its own.
 save_copy() {
-  local dest=$edits_home/$1/$2/$3 source=$4
+  local dest=$edits_home/$1/$2/$3 source=$4 collision=0
+  while [[ -e $dest || -L $dest ]]; do
+    if same_file "$dest" "$source"; then printf '%s' "$dest"; return 0; fi
+    collision=$((collision + 1))
+    dest=$edits_home/$1/$2-$collision/$3
+  done
   if [[ -e $dest || -L $dest ]] || ! mkdir -p "$(dirname "$dest")" 2>/dev/null || ! cp -p "$source" "$dest"; then
     warn "backup failed for $(tilde "$source")"
     return 1
@@ -943,21 +979,21 @@ save_copy() {
   printf '%s' "$dest"
 }
 
-backup_row() {
-  local i=$1 source candidate dest generation
-  source=$(disk_file "$i")
-  if [[ -d $edits_home/${row_tool[i]} ]]; then
+backup_copy() {
+  local tool=$1 generation=$2 path=$3 source=$4 candidate
+  if [[ -d $edits_home/$tool ]]; then
     while IFS= read -r candidate; do
-      [[ $candidate == *"/${row_plugin[i]}/${row_path[i]}" ]] || continue
-      if same_file "$candidate" "$source"; then
-        row_backup[i]=$candidate row_source[i]=$candidate
-        return 0
-      fi
-    done < <(find "$edits_home/${row_tool[i]}" -type f)
+      [[ $candidate == *"/$path" ]] || continue
+      if same_file "$candidate" "$source"; then printf '%s' "$candidate"; return 0; fi
+    done < <(find "$edits_home/$tool" -type f)
   fi
-  generation=$scan_generation
+  save_copy "$tool" "$generation" "$path" "$source"
+}
+
+backup_row() {
+  local i=$1 dest generation=$scan_generation
   [[ ${row_kind[i]} != old ]] || generation+=-before-auto-update
-  dest=$(save_copy "${row_tool[i]}" "$generation" "${row_plugin[i]}/${row_path[i]}" "$source") || return 1
+  dest=$(backup_copy "${row_tool[i]}" "$generation" "${row_plugin[i]}/${row_path[i]}" "$(disk_file "$i")") || return 1
   row_backup[i]=$dest row_source[i]=$dest
 }
 
@@ -1047,7 +1083,7 @@ scan_stop() {
 }
 
 edits_scan() {
-  local tool=$1 plugin root base active old warned=0 first=${#row_tool[@]} i count p3base name
+  local tool=$1 plugin root base active old warned=0 first=${#row_tool[@]} i count p3base name status
   local changed=() found=() unknown=() labels=()
   name=$(tool_label "$tool")
   heading "$name"
@@ -1061,7 +1097,14 @@ edits_scan() {
   fi
   scan_failed=0
   for plugin in "${plugins[@]}"; do
-    plugin_installed "$tool" "$plugin" || continue
+    status=0
+    plugin_installed "$tool" "$plugin" || status=$?
+    if ((status == 2)); then
+      listing_failed "$tool"
+      rows_truncate "$first"
+      return 0
+    fi
+    ((status == 0)) || continue
     if ! root=$("${tool}_root" "$plugin"); then
       scan_stop "$tool" "$first" "p3stack is installed in $name, but the installer couldn't find where $name keeps $plugin, so it left $name alone. Check that $name still lists $plugin, or reinstall p3stack there, then run p3stack update again."
       return 0
@@ -1494,13 +1537,16 @@ edits_decide() {
 }
 
 edits_prepare() {
-  local tool base olds=() scan=()
+  local tool base status olds=() scan=()
   scan_generation=$gen_stamp-${new_commit:0:7}
   for tool; do
     [[ $stopped != *" $tool "* ]] || continue
     prepare_installation "$tool"
     [[ $stopped != *" $tool "* ]] || continue
-    has_p3stack "$tool" || continue
+    status=0
+    has_p3stack "$tool" || status=$?
+    if ((status == 2)); then listing_failed "$tool"; continue; fi
+    ((status == 0)) || continue
     scan+=("$tool")
     reinstall+="$tool "
     base=$(installed_base "$tool" p3stack || true)
@@ -1677,7 +1723,7 @@ apply_row() {
 }
 
 journal_apply() {
-  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i p root plugin installed tree had_record=0 kept=() accepted=() reported=" " skill bases raced=0
+  local tool=$1 journal=$pending/$1 replay=${2:-0} commit i p root plugin installed tree had_record=0 kept=() accepted=() reported=" " skill bases raced=0 chose=0
   local actual_commits=() actual_trees=() actual_roots=()
   journal_load "$tool" || return 1
   commit=$(cat "$journal/commit") || return 1
@@ -1709,6 +1755,9 @@ journal_apply() {
       [[ ${plugins[p]} == "${row_plugin[i]}" ]] && break
     done
     tree=${actual_trees[p]}
+    case ${row_action[i]}/${row_class[i]} in
+      accept/*|merged/*|moved/*|keep/edited-conflict|keep/edited-removed|keep/edited-file-removed|keep/unknown-base) chose=1 ;;
+    esac
     row_release[i]+=" $(release_hash "$tree" "${row_plugin[i]}" "${row_path[i]}")"
     if ! apply_row "$i" "${actual_roots[p]}/${row_path[i]}" "$tree" "$bases" "$replay" "$commit" "${actual_commits[p]}"; then
       warn "couldn't write $(tilde "${actual_roots[p]}/${row_path[i]}"). The rest of this update waits in $(tilde "$journal")."
@@ -1742,7 +1791,7 @@ journal_apply() {
   done
   journal_save_sources "$tool" "$journal" unapplied || return 1
   rm -rf "$journal" || return 1
-  if ((raced)); then say "  p3stack released again while you were choosing, or the tool installed a different release. Your choices were kept, and you'll be asked about any newer change next time."; fi
+  if ((raced && chose)); then say "  p3stack released again while you were choosing, or the tool installed a different release. Your choices were kept, and you'll be asked about any newer change next time."; fi
   if ((had_record == 0)) && [[ $scanned_tools == *" $tool "* ]]; then say "  Saved a record for next time."; fi
 }
 
@@ -1952,8 +2001,15 @@ main() {
   update_lock
   work=$(mktemp -d "${TMPDIR:-/tmp}/p3stack.XXXXXX")
   gen_stamp=$(date -u +%Y%m%dT%H%M%SZ)-${work##*.}
-  if [[ $action != uninstall ]]; then release_fetch; fi
+  local fetch_failed=0
+  if [[ $action != uninstall ]]; then
+    if ! release_fetch; then
+      warn "couldn't fetch p3stack with git -C $(tilde "$release_clone") fetch --quiet origin, or clone $repo_url. Cached interrupted updates will be recovered; no new installation will run."
+      fetch_failed=1
+    fi
+  fi
   recover_updates
+  ((fetch_failed == 0)) || return 1
   if [[ $action != uninstall && -n $present ]]; then edits_prepare $present; fi
   for tool in $present; do
     heading "$action p3stack in $tool"
