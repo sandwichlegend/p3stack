@@ -60,13 +60,18 @@ export async function startSandbox({ port = Number(process.env.PORT || 4317), sa
       && timingSafeEqual(Buffer.from(value), Buffer.from(token))
   }
 
+  const clientError = (status, message) => Object.assign(new Error(message), { status })
+
   async function body(req) {
     let text = ""
     for await (const chunk of req) {
       text += chunk
-      if (text.length > 65536) throw new Error("Request too large")
+      if (text.length > 65536) throw clientError(413, "Request too large")
     }
-    return JSON.parse(text)
+    let value
+    try { value = JSON.parse(text) } catch { throw clientError(400, "The request body must be JSON") }
+    if (!value || typeof value !== "object") throw clientError(400, "The request body must be a JSON object")
+    return value
   }
 
   const server = http.createServer(async (req, res) => {
@@ -86,16 +91,19 @@ export async function startSandbox({ port = Number(process.env.PORT || 4317), sa
       }
       const url = new URL(req.url, origin)
       const path = url.pathname
-      const loopback = expectedOrigin === origin && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress)
-      if (!loopback) {
+      // Tailscale Serve connects from loopback and passes the client's Host through, so with SANDBOX_URL set no request is trusted by address.
+      if (remote) {
         const cookie = req.headers.cookie?.split(";").map((part) => part.trim()).find((part) => part.startsWith("p3stack_sandbox="))?.slice("p3stack_sandbox=".length)
-        if (remote && req.method === "GET" && path === "/" && validToken(url.searchParams.get("token"))) {
-          res.setHeader("Set-Cookie", `p3stack_sandbox=${token}; HttpOnly; Secure; SameSite=Strict; Path=/`)
+        if (req.method === "GET" && path === "/" && validToken(url.searchParams.get("token"))) {
+          const secure = expectedOrigin === remote.origin ? "; Secure" : ""
+          res.setHeader("Set-Cookie", `p3stack_sandbox=${token}; HttpOnly${secure}; SameSite=Strict; Path=/`)
           url.searchParams.delete("token")
           res.writeHead(302, { Location: `${path}${url.search}` })
           return res.end()
         }
-        if (!remote || !validToken(cookie)) return json(403, { error: "Open the SANDBOX_URL link printed at startup to set its access cookie." })
+        if (!validToken(cookie)) return json(403, { error: "Open a link printed at startup to set the access cookie." })
+      } else if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress)) {
+        return json(403, { error: "Use the printed loopback URL." })
       }
       if (req.method === "GET" && assets.has(path)) {
         const [file, type] = assets.get(path)
@@ -105,17 +113,21 @@ export async function startSandbox({ port = Number(process.env.PORT || 4317), sa
       }
       if (req.method === "GET" && path === "/scenarios") return json(200, scenarios)
       if (req.method === "POST" && path === "/sessions") {
+        const { scenario: name } = await body(req)
+        const scenario = scenarios.find((item) => item.id === name)
+        if (!scenario) return json(400, { error: "Unknown scenario" })
+        for (const [address, times] of attempts) {
+          const recent = times.filter((time) => Date.now() - time < rateWindowMs)
+          if (recent.length) attempts.set(address, recent)
+          else attempts.delete(address)
+        }
         const key = req.socket.remoteAddress
-        const recent = (attempts.get(key) || []).filter((time) => Date.now() - time < rateWindowMs)
-        attempts.set(key, recent)
+        const recent = attempts.get(key) || []
         if (recent.length >= createLimit) {
           res.setHeader("Retry-After", String(Math.ceil(rateWindowMs / 1000)))
           return json(429, { error: "Too many session requests. Try again in a minute." })
         }
-        recent.push(Date.now())
-        const { scenario: name } = await body(req)
-        const scenario = scenarios.find((item) => item.id === name)
-        if (!scenario) return json(400, { error: "Unknown scenario" })
+        attempts.set(key, [...recent, Date.now()])
         if (sessions.size >= 8) return json(429, { error: "Eight sessions are already open. Close or reset a terminal first." })
         const id = randomUUID()
         const dir = join(root, id)
@@ -165,8 +177,8 @@ export async function startSandbox({ port = Number(process.env.PORT || 4317), sa
       }
       json(405, { error: "Method not allowed" })
     } catch (error) {
-      console.error(error.message)
-      if (!res.headersSent) json(500, { error: error.message })
+      if (!error.status) console.error(error.message)
+      if (!res.headersSent) json(error.status || 500, { error: error.message })
       else res.end()
     }
   })
@@ -175,8 +187,8 @@ export async function startSandbox({ port = Number(process.env.PORT || 4317), sa
     await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve) })
   } catch (error) { await rm(root, { recursive: true, force: true }); throw error }
   origin = `http://127.0.0.1:${server.address().port}`
-  const remoteUrl = remote ? `${remote.origin}/?token=${token}` : undefined
-  log(`Update sandbox: ${origin}\n${remoteUrl ? `Tailnet access: ${remoteUrl}\n` : ""}Scratch: ${root}\nRequires Linux, Bubblewrap, and unprivileged user namespaces. Ctrl-C stops all terminals.`)
+  const link = (base) => token ? `${base}/?token=${token}` : base
+  log(`Update sandbox: ${link(origin)}\n${remote ? `Tailnet access: ${link(remote.origin)}\n` : ""}Scratch: ${root}\nRequires Linux, Bubblewrap, and unprivileged user namespaces. Ctrl-C stops all terminals.`)
   return {
     origin,
     async stop() {
