@@ -1760,8 +1760,8 @@ lock_owner_alive() {
     kill -0 "$pid" 2>/dev/null || return 1
     args=$(process_args "$pid" || true)
     case $args in
-      *install.sh*|*p3stack*) ;;
       bash|*/bash|'bash -s'|*'/bash -s') [[ -f $1/command ]] || return 1 ;;
+      bash\ *|*/bash\ *) [[ $args == *install.sh* ]] || return 1 ;;
       *) return 1 ;;
     esac
     [[ ! -f $1/command || $args == "$(cat "$1/command")" ]]
