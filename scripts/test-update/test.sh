@@ -1197,6 +1197,223 @@ test_accept_actual_release_removal_reports_the_removal() {
   has "$(backup_for codex skills/poteto-mode/SKILL.md)" "Write the code test first."
 }
 
+test_codex_real_listing_reinstalls_removed_plugins() {
+  setup codex-reallist copy
+  (eval "$(cat "$dir.env")"; codex plugin remove p3stack@p3stack; codex plugin remove p3stack-team-kit@p3stack)
+  tools=codex update_answering "" P3STACK_NONINTERACTIVE=1
+  recorded codex
+  is_release "$new" "$codex/skills/swarm/SKILL.md" skills/swarm/SKILL.md
+  tools=codex action=install update_answering "" P3STACK_NONINTERACTIVE=1
+  recorded codex
+}
+
+test_two_leftover_versions_back_up_only_their_own_edits() {
+  setup two-leftovers auto-updated
+  echo SECOND_LEFTOVER_EDIT >>"$claude/skills/poteto-mode/SKILL.md"
+  (eval "$(cat "$dir.env")"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+  tools=claude action=install update_answering "" P3STACK_NONINTERACTIVE=1
+  recorded claude
+  has "$(find "$home/.p3stack/edits/claude" -path "*/p3stack/${old:0:12}/skills/poteto-mode/SKILL.md" | head -1)" 'Write the code test first.'
+  has "$(find "$home/.p3stack/edits/claude" -path "*/p3stack/${new:0:12}/skills/poteto-mode/SKILL.md" | head -1)" SECOND_LEFTOVER_EDIT
+  [[ $(find "$home/.p3stack/edits/claude" -type f | wc -l) == 2 ]] || fail "pristine files from another release were called user edits"
+  (eval "$(cat "$dir.env")"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+  tools=claude action=install update_answering "" P3STACK_NONINTERACTIVE=1
+  [[ $(find "$home/.p3stack/edits/claude" -type f | wc -l) == 2 ]] || fail "identical leftovers weren't deduplicated"
+  never_says 'backup failed'
+}
+
+fail_listing_at() {
+  local tool=$1 number=$2 command=$3
+  mkdir -p "$dir/realbin"
+  cp "$here/fake-tool" "$dir/realbin/$tool"
+  rm "$dir/bin/$tool"
+  cat >"$dir/bin/$tool" <<WRAP
+#!/usr/bin/env bash
+if [[ \$* == '$command' ]]; then
+  n=0
+  [[ ! -f '$dir/list-count' ]] || n=\$(cat '$dir/list-count')
+  n=\$((n+1)); echo \$n >'$dir/list-count'
+  if [[ \$n == '$number' ]]; then echo 'injected listing failure' >&2; exit 1; fi
+fi
+exec '$dir/realbin/$tool' "\$@"
+WRAP
+  chmod +x "$dir/bin/$tool"
+}
+
+test_listing_failure_stops_at_every_detection_phase() {
+  local number
+  for number in 1 3 4 5; do
+    setup listing-failure-$number kept
+    fail_listing_at claude "$number" 'plugin list --json'
+    tools=claude expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+    says 'claude plugin list --json'
+    never_says '$ claude plugin install'
+    never_says '$ claude plugin update'
+    has "$claude_old/skills/poteto-mode/SKILL.md" 'Write the code test first.'
+    record_is claude "$old"
+  done
+}
+
+test_codex_listing_failure_does_not_fall_back_to_cache() {
+  setup codex-list-failure copy
+  fail_listing_at codex 1 'plugin list'
+  tools=codex expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  says 'codex plugin list'
+  never_says '$ codex plugin add'
+  record_is codex "$old"
+}
+
+late_codex_edits() {
+  mkdir -p "$dir/realbin"
+  cp "$here/fake-tool" "$dir/realbin/codex"
+  rm "$dir/bin/codex"
+  cat >"$dir/bin/codex" <<WRAP
+#!/usr/bin/env bash
+if [[ \$* == 'plugin marketplace upgrade p3stack' && ! -f '$dir/late-written' ]]; then
+  echo LATE_USER_EDIT_R4 >>'$codex/skills/poteto-mode/SKILL.md'
+  echo LATE_ADDED_FILE_R4 >'$codex/skills/poteto-mode/mine.txt'
+  touch '$dir/late-written'
+fi
+exec '$dir/realbin/codex' "\$@"
+WRAP
+  chmod +x "$dir/bin/codex"
+}
+
+test_codex_late_edit_and_added_file_survive() {
+  setup codex-late interrupted
+  late_codex_edits
+  tools=codex update_answering "a\n"
+  has "$codex/skills/poteto-mode/SKILL.md" LATE_USER_EDIT_R4
+  has "$codex/skills/poteto-mode/mine.txt" LATE_ADDED_FILE_R4
+  has "$(backup_for codex skills/poteto-mode/SKILL.md)" LATE_USER_EDIT_R4
+  has "$(backup_for codex skills/poteto-mode/mine.txt)" LATE_ADDED_FILE_R4
+  says 'after the scan'
+  tools=codex update_answering "a\n"
+  asked 1
+  is_release "$new" "$codex/skills/poteto-mode/SKILL.md" skills/poteto-mode/SKILL.md
+}
+
+late_cursor_edits() {
+  cat >"$dir/bin/git" <<WRAP
+#!/usr/bin/env bash
+case "\$*" in *'pull --ff-only'*)
+  echo MY_LATE_EDIT >>'$home/.cursor/plugins/local/p3stack/skills/recall/SKILL.md'
+  echo MY_LATE_FILE >'$home/.cursor/plugins/local/p3stack/skills/recall/mine.txt' ;;
+esac
+exec '$dir/sys/git' "\$@"
+WRAP
+  chmod +x "$dir/bin/git"
+}
+
+test_cursor_late_edit_and_added_file_survive() {
+  setup cursor-late added
+  late_cursor_edits
+  tools=cursor update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$home/.cursor/plugins/local/p3stack/skills/recall/SKILL.md" MY_LATE_EDIT
+  has "$home/.cursor/plugins/local/p3stack/skills/recall/mine.txt" MY_LATE_FILE
+  has "$(backup_for cursor skills/recall/SKILL.md)" MY_LATE_EDIT
+  has "$(backup_for cursor skills/recall/mine.txt)" MY_LATE_FILE
+  says 'after the scan'
+}
+
+test_codex_moving_marketplace_keeps_provenance_honest() {
+  setup codex-mixed interrupted
+  mkdir -p "$dir/realbin"
+  cp "$here/fake-tool" "$dir/realbin/codex"
+  rm "$dir/bin/codex"
+  cat >"$dir/bin/codex" <<WRAP
+#!/usr/bin/env bash
+if [[ \$* == 'plugin add p3stack-team-kit@p3stack' && ! -f '$dir/published' ]]; then
+  echo UPSTREAM_THREE >>'$dir/release/p3stack/skills/swarm/SKILL.md'
+  git -C '$dir/release' -c user.name=fixture -c user.email=fixture@example.com commit -qam third
+  git -C '$dir/release' push -q '$dir/origin.git' main
+  '$dir/realbin/codex' plugin marketplace upgrade p3stack
+  touch '$dir/published'
+fi
+exec '$dir/realbin/codex' "\$@"
+WRAP
+  chmod +x "$dir/bin/codex"
+  tools=codex expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  record_is codex "$old"
+  says 'marketplace changed'
+  tools=codex update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$codex/skills/swarm/SKILL.md" UPSTREAM_THREE
+  local third
+  third=$(git --git-dir="$dir/origin.git" rev-parse HEAD)
+  record_is codex "$third"
+  never_says 'Kept your version of swarm'
+}
+
+test_failed_cursor_rebuild_does_not_blame_user_for_missing_files() {
+  setup cursor-damage added
+  echo MY_TEAM_EDIT >>"$home/.cursor/plugins/local/p3stack-team-kit/skills/deslop/SKILL.md"
+  fail_cursor_copy p3stack
+  tools=cursor expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  rm "$dir/bin/cp"
+  tools=cursor update_answering "" P3STACK_NONINTERACTIVE=1
+  never_says 'You deleted '
+  never_says "p3stack-team-kit isn't installed"
+  never_says 'record was dropped'
+  has "$home/.cursor/plugins/local/p3stack-team-kit/skills/deslop/SKILL.md" MY_TEAM_EDIT
+  recorded cursor
+}
+
+test_deleted_file_notes_name_the_plugin() {
+  setup deleted-labels added
+  rm "$home/.cursor/plugins/local/p3stack/plugin.json" "$home/.cursor/plugins/local/p3stack-team-kit/plugin.json"
+  tools=cursor update_answering "" P3STACK_NONINTERACTIVE=1
+  says 'You deleted p3stack/plugin.json'
+  says 'You deleted p3stack-team-kit/plugin.json'
+}
+
+test_opencode_uninstalled_listing_backs_up_leftovers() {
+  setup opencode-leftover clean
+  local root
+  root=$(find "$home/.cache/opencode/npm" -path '*/p3stack/p3stack/skills/poteto-mode/SKILL.md' | head -1)
+  echo OPENCODE_LEFTOVER_EDIT >>"$root"
+  (eval "$(cat "$dir.env")"; opencode plugin update github:sandwichlegend/p3stack; opencode plugin remove github:sandwichlegend/p3stack)
+  tools=opencode action=install update_answering "" P3STACK_NONINTERACTIVE=1
+  [[ -n $(grep -rl OPENCODE_LEFTOVER_EDIT "$home/.p3stack/edits/opencode" 2>/dev/null) ]] || fail 'OpenCode leftover edit has no backup'
+  never_says 'No edited files.'
+  recorded opencode
+}
+
+test_opencode_failed_listing_stops_the_tool() {
+  setup opencode-list-failure clean
+  fail_listing_at opencode 1 'plugin list'
+  tools=opencode expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  says 'opencode plugin list'
+  never_says '$ opencode plugin add'
+  record_is opencode "$old"
+}
+
+test_release_race_without_choices_does_not_claim_choices() {
+  setup race-no-choice clean
+  tools=codex update_answering "" P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_RELEASE_DURING_UPDATE=1
+  never_says 'while you were choosing'
+}
+
+test_failed_fetch_warns_and_recovers_cached_journal_only() {
+  setup fetch-failure interrupted
+  stop_at_record_write
+  tools=codex expect_failure=1 update_answering "k\n"
+  rm "$dir/bin/cp"
+  cat >"$dir/bin/git" <<WRAP
+#!/usr/bin/env bash
+case "\$*" in *'fetch --quiet origin'*) echo INJECTED_FETCH_FAILURE >&2; exit 1 ;; esac
+exec '$dir/sys/git' "\$@"
+WRAP
+  chmod +x "$dir/bin/git"
+  tools=codex expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  says "couldn't fetch"
+  says 'git -C'
+  says 'Finished an interrupted update'
+  never_says '$ codex plugin add'
+  never_says 'Checking your installed copies'
+  absent "$home/.p3stack/pending/codex"
+  has "$codex/skills/poteto-mode/SKILL.md" 'Write the code test first.'
+}
+
 test_fake_listings_match_real_captures() {
   setup cli-format clean
   : >"$dir/out"
