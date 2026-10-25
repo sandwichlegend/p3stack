@@ -79,6 +79,7 @@ claude() {
 
 codex_home=${CODEX_HOME:-$HOME/.codex}
 codex_market=$codex_home/.tmp/marketplaces/p3stack
+codex_state=$codex_home/plugins/installed.txt
 
 codex() {
   case "$*" in
@@ -86,8 +87,17 @@ codex() {
     "plugin marketplace upgrade "*) git -C "$codex_market" pull --quiet --ff-only ;;
     "plugin marketplace list") printf 'MARKETPLACE  ROOT\n'; [[ ! -d $codex_market ]] || printf 'p3stack      %s\n' "$codex_market" ;;
     "plugin marketplace remove "*) rm -rf "$codex_market" ;;
-    "plugin add "*) export_tree "$(git -C "$codex_market" rev-parse HEAD)" "$(subtree "${3%@*}")" "$codex_home/plugins/cache/p3stack/${3%@*}/1.0.0"; [[ ${P3STACK_FAKE_FAIL_AFTER_UPDATE:-} != codex || $3 != p3stack-team-kit@p3stack ]] ;;
-    "plugin remove "*) rm -rf "$codex_home/plugins/cache/p3stack/${3%@*}" ;;
+    "plugin list") [[ ! -f $codex_state ]] || cat "$codex_state" ;;
+    "plugin add "*)
+      mkdir -p "$(dirname "$codex_state")"
+      { grep -vFx "$3" "$codex_state" 2>/dev/null || true; echo "$3"; } >"$codex_state.new"
+      mv "$codex_state.new" "$codex_state"
+      export_tree "$(git -C "$codex_market" rev-parse HEAD)" "$(subtree "${3%@*}")" "$codex_home/plugins/cache/p3stack/${3%@*}/1.0.0"; [[ ${P3STACK_FAKE_FAIL_AFTER_UPDATE:-} != codex || $3 != p3stack-team-kit@p3stack ]] ;;
+    "plugin remove "*)
+      { grep -vFx "$3" "$codex_state" 2>/dev/null || true; } >"$codex_state.new"
+      mv "$codex_state.new" "$codex_state"
+      rm -rf "$codex_home/plugins/cache/p3stack/${3%@*}" ;;
+
     "plugin "*) unsupported "$@" ;;
     *) act_as_merge_agent "$@" ;;
   esac
