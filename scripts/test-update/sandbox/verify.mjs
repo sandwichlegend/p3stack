@@ -1,8 +1,7 @@
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import assert from "node:assert/strict"
-import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises"
+import { mkdtemp, readFile, unlink, readdir, rm } from "node:fs/promises"
 import { realpathSync } from "node:fs"
-import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import * as pty from "node-pty"
 import { isolation, prepare } from "./sandbox.mjs"
@@ -10,12 +9,36 @@ import { scenarios } from "./scenarios.mjs"
 import { verifyHttp } from "./verify-http.mjs"
 
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`
-const hidden = [homedir(), "/root", "/usr/lib/chatgpt/resources/codex", "/usr/bin/codex", "/usr/bin/claude"]
+const hidden = ["/home", "/root", "/usr/lib/chatgpt/resources/codex", "/usr/bin/codex", "/usr/bin/claude"]
 for (const name of ["claude", "codex", "cursor-agent", "opencode"]) {
   const paths = execFileSync("/bin/bash", ["-c", `type -ap ${name} || true`], { encoding: "utf8" }).trim().split("\n").filter(Boolean)
   hidden.push(...paths, ...paths.map((path) => realpathSync(path)))
 }
-const scratch = await mkdtemp(join(tmpdir(), "p3stack-sandbox-verify-"))
+const scratch = await mkdtemp("/tmp/p3stack-sandbox-verify-")
+for (const key of ["HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"]) {
+  for (const file of ["server.mjs", "sandbox.mjs", "verify.mjs", "verify-http.mjs"]) {
+    const refused = spawnSync(process.execPath, [new URL(file, import.meta.url).pathname], {
+      env: { ...process.env, [key]: "/home/liam" }, encoding: "utf8",
+    })
+    assert.notEqual(refused.status, 0, `${file} accepted unsafe ${key}`)
+    assert.match(refused.stderr, /refusing:/)
+  }
+  for (const [program, file] of [["bash", "bootstrap.sh"], ["python3", "merge-agent.py"]]) {
+    const refused = spawnSync(program, [new URL(file, import.meta.url).pathname, "clean", join(scratch, "unused")], {
+      env: { ...process.env, [key]: "/home/liam" }, encoding: "utf8",
+    })
+    assert.notEqual(refused.status, 0, `${file} accepted unsafe ${key}`)
+    assert.match(refused.stderr + refused.stdout, /refusing:/)
+  }
+}
+const missingEnv = await mkdtemp(join(scratch, "missing-env-"))
+await prepare(missingEnv, scenarios.find((scenario) => scenario.id === "clean"))
+await unlink(`${missingEnv}/work/env.sh`)
+const refusedShell = spawnSync("bwrap", [...isolation(missingEnv), "/bin/bash", "--noprofile", "--rcfile", "/tmp/sandbox/shell.rc", "-i"], { encoding: "utf8", env: {} })
+assert.notEqual(refusedShell.status, 0, "missing env file allowed the shell to start")
+assert.match(refusedShell.stdout + refusedShell.stderr, /refusing: missing fixture env file/)
+console.log("unsafe homes and a missing env file are rejected before any tool runs")
+
 const answers = {
   copy: [["Choose Y/N", "y"]],
   "edited-while-updating": [["Choose K/A/T", "a"]],
@@ -58,11 +81,10 @@ const files = {
 }
 try {
   for (const scenario of scenarios) {
-    const dir = join(scratch, scenario.id)
-    await mkdir(dir)
+    const dir = await mkdtemp(join(scratch, `${scenario.id}-`))
     await prepare(dir, scenario)
     const installedTool = (await readdir(join(dir, "fixture-bin")))[0]
-    const shell = pty.spawn("bwrap", [...isolation(dir), "/bin/bash", "--noprofile", "--rcfile", "/sandbox/shell.rc", "-i"], { cwd: dir, env: {}, cols: 120, rows: 40 })
+    const shell = pty.spawn("bwrap", [...isolation(dir), "/bin/bash", "--noprofile", "--rcfile", "/tmp/sandbox/shell.rc", "-i"], { cwd: dir, env: {}, cols: 120, rows: 40 })
     let output = ""
     shell.onData((data) => { output += data })
     const wait = async (text, since = 0) => {
@@ -73,7 +95,7 @@ try {
       }
     }
     try {
-      await wait("/sandbox/work $ ")
+      await wait("/tmp/sandbox/work $ ")
       let since = output.length
       shell.write("p3stack update; printf '\\nUPDATE_EXIT=%s\\n' \"$?\"\r")
       await wait("enter confirm", since)
@@ -84,7 +106,7 @@ try {
         since = output.length
         shell.write(`${answer}\r`)
       }
-      await wait("/sandbox/work $ ", since)
+      await wait("/tmp/sandbox/work $ ", since)
       if (scenario.id === "interrupted") {
         assert(output.includes("\r\nUPDATE_EXIT=1\r\n"), output)
         since = output.length
@@ -95,7 +117,7 @@ try {
         await wait("Choose K/A/T", since)
         since = output.length
         shell.write("k\r")
-        await wait("/sandbox/work $ ", since)
+        await wait("/tmp/sandbox/work $ ", since)
       }
       assert(output.includes(expected[scenario.id]), output)
       assert(output.includes("\r\nUPDATE_EXIT=0\r\n"), output)
@@ -141,13 +163,13 @@ try {
       }
       since = output.length
       shell.write(`python3 -c 'import ctypes, pyexpat, sqlite3, ssl; print("PYTHON_OK")'; nano --version; file /etc/passwd\r`)
-      await wait("/sandbox/work $ ", since)
+      await wait("/tmp/sandbox/work $ ", since)
       assert(output.slice(since).includes("\r\nPYTHON_OK\r\n"), output)
       assert(output.slice(since).includes("GNU nano"), output)
       assert(output.slice(since).includes("ASCII text"), output)
       since = output.length
-      shell.write(`${hidden.map((path) => `test ! -e ${quote(path)}`).join(" && ")} && ! touch /checkout/.sandbox-write-probe && ! touch /usr/.sandbox-write-probe && ! touch /etc/.sandbox-write-probe && test "$HOME" = /sandbox/work/home && test "$(command -v ${installedTool})" = /sandbox/work/bin/${installedTool} && test "$(command -v nano)" = /sandbox/work/sys/nano && echo ISOLATION_OK\r`)
-      await wait("/sandbox/work $ ", since)
+      shell.write(`${hidden.map((path) => `test ! -e ${quote(path)}`).join(" && ")} && ! touch /checkout/.sandbox-write-probe && ! touch /usr/.sandbox-write-probe && ! touch /etc/.sandbox-write-probe && test "$HOME" = /tmp/sandbox/work/home && test "$(command -v ${installedTool})" = /tmp/sandbox/work/bin/${installedTool} && test "$(command -v nano)" = /tmp/sandbox/work/sys/nano && echo ISOLATION_OK\r`)
+      await wait("/tmp/sandbox/work $ ", since)
       assert(output.slice(since).includes("\r\nISOLATION_OK\r\n"), output)
       console.log(`${scenario.id}: real CLI, expected result, isolation checks passed`)
     } finally {

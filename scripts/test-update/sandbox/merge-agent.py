@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import difflib
+import runpy
+import sys
 from pathlib import Path
+
+sys.dont_write_bytecode = True
+runpy.run_path(str(Path(__file__).parents[1] / "safe-home.py"))["check"](owned=True)
 
 print(f"\nSandbox merge agent in {Path.cwd()}\n")
 print("Files: " + ", ".join(sorted(path.name for path in Path.cwd().iterdir())))

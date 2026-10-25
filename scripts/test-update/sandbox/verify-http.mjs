@@ -128,7 +128,7 @@ export async function verifyHttp() {
       const deadline = Date.now() + 5000
       while (!output.includes(text)) { assert(Date.now() < deadline, output); await delay(20) }
     }
-    await wait("/sandbox/work $ ")
+    await wait("/tmp/sandbox/work $ ")
     const input = (data) => fetch(`${idle.origin}/sessions/${id}/input`, { method: "POST", body: JSON.stringify({ data }) })
     assert.equal((await input("for i in 1 2 3 4 5 6 7 8; do echo OUTPUT_ALIVE; sleep 0.3; done\r")).status, 200)
     await wait("OUTPUT_ALIVE\r\n".repeat(8))

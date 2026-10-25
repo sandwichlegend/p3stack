@@ -2,18 +2,26 @@
 
 Requires Linux, Node.js 22 or newer, Python 3, Git, and Bubblewrap with unprivileged user namespaces enabled. Install Bubblewrap with your system package manager. If node-pty has no prebuilt binary for your platform, npm also needs a C++ compiler and make.
 
-From this folder, run:
+From this folder, run with a fresh temporary home:
 
 ```sh
-npm ci
-npm start
+(
+  export HOME=$(mktemp -d /tmp/p3stack-sandbox-home.XXXXXXXX)
+  export CLAUDE_CONFIG_DIR=$HOME/.claude CODEX_HOME=$HOME/.codex
+  export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share
+  export XDG_CACHE_HOME=$HOME/.cache XDG_STATE_HOME=$HOME/.local/state
+  npm ci
+  npm start
+)
 ```
+
+The server and test helpers reject homes outside /tmp and config paths outside that home. Each session creates its own fixture home, checks env.sh before sourcing it, and validates the home again before running a fake tool or the installer.
 
 Open http://127.0.0.1:4317. To use another port, run `PORT=4318 npm start` and use the printed URL.
 
 Click a scenario. Type `p3stack update` in the terminal, then press Enter at the tool picker. Follow the card's instructions to answer the real update prompts. Reset reloads the selected fixture and discards that terminal's edits. Each tab has its own scratch directory.
 
-Use `ls`, `cat`, `less`, `nano`, or another available editor to inspect and edit files between updates. Run `find "$HOME" -name SKILL.md` to locate installed skills. The terminal starts in `/sandbox/work`. The page shows the corresponding host scratch path.
+Use `ls`, `cat`, `less`, `nano`, or another available editor to inspect and edit files between updates. Run `find "$HOME" -name SKILL.md` to locate installed skills. The terminal starts in `/tmp/sandbox/work`. The page shows the corresponding host scratch path.
 
 Choose **Talk to a model**, then choose an agent. The fake agent prints the merge folder and brief, combines the fixture's independent changes into `result.md` or `result.ts`, and returns to the installer. It does not call a model. If you introduce overlapping edits, it refuses to write a result.
 

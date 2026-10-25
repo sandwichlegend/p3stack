@@ -1,6 +1,6 @@
 import http from "node:http"
-import { readFile, mkdtemp, mkdir, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { readFile, mkdtemp, rm } from "node:fs/promises"
+import { mkdtempSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
@@ -24,7 +24,7 @@ export async function startSandbox({ port = Number(process.env.PORT || 4317), sa
   const remote = tailnetOrigin(sandboxUrl)
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("PORT must be an integer from 0 to 65535")
   const token = remote ? randomBytes(32).toString("base64url") : undefined
-  const root = await mkdtemp(join(tmpdir(), "p3stack-sandbox-"))
+  const root = await mkdtemp("/tmp/p3stack-sandbox-")
   const sessions = new Map()
   const attempts = new Map()
   const preparing = new Set()
@@ -130,10 +130,10 @@ export async function startSandbox({ port = Number(process.env.PORT || 4317), sa
         attempts.set(key, [...recent, Date.now()])
         if (sessions.size >= 8) return json(429, { error: "Eight sessions are already open. Close or reset a terminal first." })
         const id = randomUUID()
-        const dir = join(root, id)
+        const dir = mkdtempSync(join(root, `${id}-`))
         const session = { dir }
         sessions.set(id, session)
-        const preparation = (async () => { await mkdir(dir); await prepare(dir, scenario) })()
+        const preparation = prepare(dir, scenario)
         preparing.add(preparation)
         try { await preparation } catch (error) { close(id); throw error } finally { preparing.delete(preparation) }
         if (!sessions.has(id)) return json(410, { error: "Session closed during setup" })
@@ -153,7 +153,7 @@ export async function startSandbox({ port = Number(process.env.PORT || 4317), sa
         res.writeHead(200, { "Content-Type": "text/event-stream", "Connection": "keep-alive" })
         res.flushHeaders()
         session.stream = res
-        session.terminal = pty.spawn("bwrap", [...isolation(session.dir), "/bin/bash", "--noprofile", "--rcfile", "/sandbox/shell.rc", "-i"], {
+        session.terminal = pty.spawn("bwrap", [...isolation(session.dir), "/bin/bash", "--noprofile", "--rcfile", "/tmp/sandbox/shell.rc", "-i"], {
           name: "xterm-256color", cols: 100, rows: 32, cwd: session.dir, env: {},
         })
         session.terminal.onData((data) => {
