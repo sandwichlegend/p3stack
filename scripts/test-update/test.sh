@@ -464,7 +464,7 @@ test_deleted_files_report_once() {
   setup deleted-file kept
   rm "$claude_old/skills/swarm/SKILL.md"
   update_answering ""
-  says "You deleted skills/swarm/SKILL.md; p3stack's update put it back."
+  says "You deleted p3stack/skills/swarm/SKILL.md; p3stack's update put it back."
   update_answering ""
   never_says "You deleted"
 }
@@ -1375,6 +1375,8 @@ test_opencode_uninstalled_listing_backs_up_leftovers() {
   tools=opencode action=install update_answering "" P3STACK_NONINTERACTIVE=1
   [[ -n $(grep -rl OPENCODE_LEFTOVER_EDIT "$home/.p3stack/edits/opencode" 2>/dev/null) ]] || fail 'OpenCode leftover edit has no backup'
   never_says 'No edited files.'
+  says "isn't installed in OpenCode"
+  [[ $(find "$home/.p3stack/edits/opencode" -type f | wc -l) == 1 ]] || fail 'pristine OpenCode leftovers were backed up as edits'
   recorded opencode
 }
 
@@ -1389,7 +1391,8 @@ test_opencode_failed_listing_stops_the_tool() {
 
 test_release_race_without_choices_does_not_claim_choices() {
   setup race-no-choice clean
-  tools=codex update_answering "" P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_RELEASE_DURING_UPDATE=1
+  release_while_choosing
+  tools=codex update_answering "" P3STACK_NONINTERACTIVE=1
   never_says 'while you were choosing'
 }
 
@@ -1412,6 +1415,46 @@ WRAP
   never_says 'Checking your installed copies'
   absent "$home/.p3stack/pending/codex"
   has "$codex/skills/poteto-mode/SKILL.md" 'Write the code test first.'
+}
+
+test_codex_records_distinct_commits_between_adds() {
+  setup codex-distinct-commits interrupted
+  mkdir -p "$dir/realbin"
+  cp "$here/fake-tool" "$dir/realbin/codex"
+  rm "$dir/bin/codex"
+  cat >"$dir/bin/codex" <<WRAP
+#!/usr/bin/env bash
+if [[ \$* == 'plugin add p3stack@p3stack' ]]; then
+  '$dir/realbin/codex' "\$@" || exit 1
+  touch '$dir/first-added'
+  exit 0
+fi
+if [[ \$* == 'plugin marketplace list' && -f '$dir/first-added' && ! -f '$dir/published' ]]; then
+  n=0
+  [[ ! -f '$dir/after-count' ]] || n=\$(cat '$dir/after-count')
+  n=\$((n+1)); echo \$n >'$dir/after-count'
+  if [[ \$n == 2 ]]; then
+    echo UPSTREAM_THREE >>'$dir/release/p3stack/skills/swarm/SKILL.md'
+    echo UPSTREAM_TEAM_THREE >>'$dir/release/team-kit/skills/deslop/SKILL.md'
+    git -C '$dir/release' -c user.name=fixture -c user.email=fixture@example.com commit -qam third
+    git -C '$dir/release' push -q '$dir/origin.git' main
+    '$dir/realbin/codex' plugin marketplace upgrade p3stack
+    touch '$dir/published'
+  fi
+fi
+exec '$dir/realbin/codex' "\$@"
+WRAP
+  chmod +x "$dir/bin/codex"
+  tools=codex update_answering "a\n"
+  local third
+  third=$(git --git-dir="$dir/origin.git" rev-parse HEAD)
+  [[ $(cat "$home/.p3stack/installed/codex/p3stack.commit") == "$new" ]] || fail 'first plugin was attributed to the later marketplace commit'
+  [[ $(cat "$home/.p3stack/installed/codex/p3stack-team-kit.commit") == "$third" ]] || fail 'second plugin lacks its own commit'
+  lacks "$codex/skills/swarm/SKILL.md" UPSTREAM_THREE
+  has "$home/.codex/plugins/cache/p3stack/p3stack-team-kit/1.0.0/skills/deslop/SKILL.md" UPSTREAM_TEAM_THREE
+  tools=codex update_answering "" P3STACK_NONINTERACTIVE=1
+  has "$codex/skills/swarm/SKILL.md" UPSTREAM_THREE
+  never_says 'Kept your version of swarm'
 }
 
 test_fake_listings_match_real_captures() {

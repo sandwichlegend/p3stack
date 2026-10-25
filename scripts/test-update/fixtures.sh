@@ -35,7 +35,7 @@ environment() {
 export HOME='$home'
 export PATH='$dir/bin:$dir/sys'
 export P3STACK_REPO_URL='$origin'
-export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache'
+export CLAUDE_CONFIG_DIR='$home/.claude' CODEX_HOME='$home/.codex' XDG_CACHE_HOME='$home/.cache' XDG_CONFIG_HOME='$home/.config' XDG_DATA_HOME='$home/.local/share' XDG_STATE_HOME='$home/.local/state'
 unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE
 EOF
 }
