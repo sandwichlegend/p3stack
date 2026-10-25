@@ -327,7 +327,7 @@ codex_install() {
   mkdir -p "$codex_home"
   run codex plugin marketplace add "$repo" || return 1
   for plugin in "${plugins[@]}"; do
-    run codex plugin add "$plugin@$marketplace" || return 1
+    codex_add_plugin "$plugin" || return 1
   done
   codex_hook_add
 }
@@ -337,7 +337,7 @@ codex_update() {
   run codex plugin marketplace add "$repo" || return 1
   run codex plugin marketplace upgrade "$marketplace" || return 1
   for plugin in "${plugins[@]}"; do
-    run codex plugin add "$plugin@$marketplace" || return 1
+    codex_add_plugin "$plugin" || return 1
   done
   codex_hook_add
 }
@@ -372,12 +372,36 @@ codex_root() {
   [[ -n $found ]] && printf '%s' "$found"
 }
 
-# Codex copies plugins from its marketplace clone but keeps them in a folder named 1.0.0, so the clone's commit is only true right after an install.
-codex_commit() {
+codex_market_commit() {
   local list root
-  list=$(codex plugin marketplace list </dev/null 2>/dev/null) || return 1
+  list=$(query codex plugin marketplace list) || return 1
   root=$(awk -v name="$marketplace" '$1 == name { sub(/^[^ ]+ +/, ""); print; exit }' <<<"$list")
   [[ -n $root ]] && git -C "$root" rev-parse --verify --quiet 'HEAD^{commit}'
+}
+
+codex_add_plugin() {
+  local plugin=$1 before after provenance=$pending/codex/provenance/$1
+  mkdir -p "$(dirname "$provenance")" && printf 'unknown\n' >"$provenance" || return 1
+  before=$(codex_market_commit || true)
+  recheck_before_replace codex "$plugin" || return 1
+  run codex plugin add "$plugin@$marketplace" || return 1
+  after=$(codex_market_commit || true)
+  if [[ -n $before && $before == "$after" ]]; then
+    printf '%s\n' "$before" >"$provenance.next" && mv "$provenance.next" "$provenance" || return 1
+  else
+    warn "Codex's marketplace changed or couldn't be read around plugin add $plugin@$marketplace. Its installed commit couldn't be pinned down, so its old record is kept."
+  fi
+}
+
+codex_commit() {
+  local provenance=$pending/codex/provenance/${1:-p3stack} commit
+  if [[ -f $provenance ]]; then
+    commit=$(cat "$provenance") || return 1
+    [[ $commit != unknown ]] || return 1
+    printf '%s' "$commit"
+  else
+    record_commit codex "${1:-p3stack}"
+  fi
 }
 
 cursor_install() {
@@ -392,7 +416,12 @@ cursor_install() {
     warn "$release_clone is missing p3stack/ or team-kit/, so the Cursor copies were left as they are"
     return 1
   fi
-  mkdir -p "$cursor_local"
+  mkdir -p "$cursor_local" || return 1
+  recheck_before_replace cursor || return 1
+  mkdir -p "$p3stack_home/repair/cursor" || return 1
+  for plugin in "${plugins[@]}"; do
+    : >"$p3stack_home/repair/cursor/$plugin" || return 1
+  done
   rm -rf "$cursor_local/p3stack" "$cursor_local/p3stack-team-kit"
   run cp -R "$release_clone/p3stack" "$cursor_local/p3stack" || return 1
   run cp -R "$release_clone/team-kit" "$cursor_local/p3stack-team-kit" || return 1
@@ -405,7 +434,7 @@ cursor_update() { cursor_install; }
 
 cursor_uninstall() {
   say "removing $cursor_local/p3stack, $cursor_local/p3stack-team-kit, and $release_clone"
-  rm -rf "$cursor_local/p3stack" "$cursor_local/p3stack-team-kit" "$release_clone"
+  rm -rf "$cursor_local/p3stack" "$cursor_local/p3stack-team-kit" "$release_clone" "$p3stack_home/repair/cursor"
 }
 
 cursor_root() { [[ -d $cursor_local/$1 ]] && printf '%s' "$cursor_local/$1"; }
@@ -718,6 +747,10 @@ class_policy() {
     edited-kept)
       scan_note="p3stack didn't change it in this release" copy_offer=yes
       ;;
+    edited-late)
+      scan_note="you changed it after the scan"
+      keep_note="Kept your newer version of ${row_plugin[i]}/${row_path[i]}. Run p3stack update in a terminal to review any p3stack change."
+      ;;
     edited-added)
       scan_note="you added this file" copy_offer=yes
       keep_note="Kept your file ${row_path[i]}."
@@ -1006,6 +1039,9 @@ scan_folder() {
   [[ -z $base ]] || base_hashes "$tool" "$plugin" "$base" >"$listing"
   if [[ -s $listing ]]; then plugin_base=known; else plugin_base=unknown; fi
   if ! installed_paths "$tool" "$root" >"$work/installed-paths"; then scan_failed=1; return 0; fi
+  if [[ $kind != old && ( $tool == cursor || $tool == codex ) ]]; then
+    snapshot_folder "$tool" "$plugin" "$root" || { scan_failed=1; return 0; }
+  fi
   { pair_hashes "$listing" "$new_release/$plugin.sha256" | cut -d $'\034' -f1; cat "$work/installed-paths"; } | LC_ALL=C sort -u >"$work/paths"
   while IFS= read -r path; do
     [[ -n $path ]] || continue
@@ -1038,7 +1074,8 @@ scan_folder() {
       fi
       if [[ -z $disk ]]; then
         [[ -n $record && -n $new && -z $kind ]] || continue
-        class=deleted
+        if [[ -f $p3stack_home/repair/$tool/$plugin ]]; then class=untouched
+        else class=deleted; fi
       elif [[ -z $record && -z $new ]] && ! in_history "$plugin" "$path"; then
         class=edited-added path_base=added
       else
@@ -1160,6 +1197,63 @@ edits_scan() {
     done
   else
     say "  No edited files."
+  fi
+}
+
+raw_signature() {
+  local hash mode
+  hash=$(sha256 <"$1") || return 1
+  mode=$(ls -ld "$1" | cut -c1-10) || return 1
+  printf '%s %s' "$hash" "$mode"
+}
+
+snapshot_folder() {
+  local tool=$1 plugin=$2 root=$3 dir=$work/scan/$1 path signature
+  mkdir -p "$dir" && printf '%s' "$root" >"$dir/$plugin.root" || return 1
+  : >"$dir/$plugin.files" || return 1
+  while IFS= read -r path; do
+    signature=$(raw_signature "$root/$path") || return 1
+    printf '%s\034%s\n' "$path" "$signature" >>"$dir/$plugin.files" || return 1
+  done <"$work/installed-paths"
+}
+
+recheck_before_replace() {
+  local tool=$1 only=${2:-} plugin root path previous current backup base i n changed=0 snapshot=$work/scan/$1
+  journal_load "$tool" || return 1
+  for plugin in "${plugins[@]}"; do
+    [[ -z $only || $plugin == "$only" ]] || continue
+    root=$("${tool}_root" "$plugin" || true)
+    [[ -n $root ]] || continue
+    if [[ -f $snapshot/$plugin.root && $(cat "$snapshot/$plugin.root") != "$root" ]]; then
+      warn "$(tool_label "$tool") changed $plugin's folder after the scan, so it was left alone. Run p3stack update again."
+      return 1
+    fi
+    installed_paths "$tool" "$root" >"$work/recheck-paths" || return 1
+    while IFS= read -r path; do
+      previous=$(awk -F '\034' -v path="$path" '$1 == path { print $2 }' "$snapshot/$plugin.files" 2>/dev/null || true)
+      current=$(raw_signature "$root/$path") || return 1
+      [[ $current != "$previous" ]] || continue
+      backup=$(backup_copy "$tool" "$gen_stamp-late" "$plugin/$path" "$root/$path") || return 1
+      n=${#row_tool[@]}
+      for ((i = 0; i < n; i++)); do
+        [[ ${row_plugin[i]} != "$plugin" || ${row_path[i]} != "$path" ]] || break
+      done
+      if ((i == n)); then
+        base=$(installed_base "$tool" "$plugin" || true)
+        if [[ -z $(release_hash "$records/$tool" "$plugin" "$path") && -z $(release_hash "$new_release" "$plugin" "$path") ]]; then base=added; fi
+        add_row "$tool" "$plugin" "$path" edited-late "$root" "$base"
+      fi
+      row_class[i]=edited-late row_action[i]=keep row_backup[i]=$backup row_source[i]=$backup
+      row_pre[i]=$(file_hash "$root/$path") || return 1
+      row_apply[i]=${row_pre[i]} row_release[i]=$(release_hash "$new_release" "$plugin" "$path")
+      say "  You changed $plugin/$path in $(tool_label "$tool") after the scan. That newer version is saved in $(tilde "$backup") and will be kept. Run p3stack update in a terminal to review it next time."
+      changed=1
+    done <"$work/recheck-paths"
+  done
+  if ((changed)); then
+    : >"$pending/$tool/rows.next" || return 1
+    for ((i = 0; i < ${#row_tool[@]}; i++)); do journal_print_row "$i" >>"$pending/$tool/rows.next" || return 1; done
+    mv "$pending/$tool/rows.next" "$pending/$tool/rows" || return 1
   fi
 }
 
@@ -1564,6 +1658,20 @@ edits_prepare() {
     edits_scan "$tool"
     [[ $stopped == *" $tool "* ]] || scanned_tools+="$tool "
   done
+  local plugin root
+  for tool; do
+    [[ $tool == cursor || $tool == codex ]] || continue
+    [[ $stopped != *" $tool "* ]] || continue
+    for plugin in "${plugins[@]}"; do
+      [[ ! -f $work/scan/$tool/$plugin.files ]] || continue
+      root=$("${tool}_root" "$plugin" || true)
+      [[ -n $root ]] || continue
+      if ! installed_paths "$tool" "$root" >"$work/installed-paths" || ! snapshot_folder "$tool" "$plugin" "$root"; then
+        stopped+="$tool "
+        break
+      fi
+    done
+  done
   edits_decide
   for tool; do
     [[ $stopped != *" $tool "* ]] || continue
@@ -1591,6 +1699,13 @@ report_row() {
 
 # A journal is one tool's planned update: rows with the user's content before (pre), the release file the tool will write (release), and what apply writes (apply).
 # Its state says how far the run got: "prepared" before the tool's own update returned, "tool-updated" after.
+journal_print_row() {
+  local i=$1
+  printf '%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\n' \
+    "${row_tool[i]}" "${row_plugin[i]}" "${row_path[i]}" "${row_class[i]}" "${row_action[i]}" "${row_source[i]}" \
+    "${row_base[i]}" "${row_from[i]}" "${row_backup[i]}" "${row_root[i]}" "${row_pre[i]}" "${row_release[i]}" "${row_apply[i]}"
+}
+
 journal_write() {
   local tool=$1 staging=$pending/.prepare-$1 i source apply saved
   rm -rf "$staging" && mkdir -p "$staging" && cp -R "$new_release" "$staging/tree" &&
@@ -1615,9 +1730,8 @@ journal_write() {
         fi
         ;;
     esac
-    printf '%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\034%s\n' \
-      "${row_tool[i]}" "${row_plugin[i]}" "${row_path[i]}" "${row_class[i]}" "${row_action[i]}" "$source" \
-      "${row_base[i]}" "${row_from[i]}" "${row_backup[i]}" "${row_root[i]}" "${row_pre[i]}" "${row_release[i]}" "$apply" >>"$staging/rows" || return 1
+    row_source[i]=$source row_apply[i]=$apply
+    journal_print_row "$i" >>"$staging/rows" || return 1
   done
   printf 'prepared\n' >"$staging/state" && mv "$staging" "$pending/$tool"
 }
@@ -1709,7 +1823,7 @@ apply_row() {
   esac
   case ${row_action[i]}/${row_class[i]} in
     copy/*) base=${row_base[i]} ;;
-    keep/edited-conflict) base=${row_base[i]:-unknown} ;;
+    keep/edited-conflict|keep/edited-late) base=${row_base[i]:-unknown} ;;
     keep/edited-file-removed|keep/edited-added|keep/edited-kept-removed|keep/edited-removed) base=added ;;
   esac
   if [[ $actual != "$plan" ]]; then
@@ -1735,6 +1849,7 @@ journal_apply() {
       git -C "$release_clone" fetch --quiet origin </dev/null 3<&- || return 1
       if ! installed=$("${tool}_commit" "$plugin" 2>/dev/null) || [[ -z $installed ]]; then
         warn "couldn't determine the commit $(tool_label "$tool") installed for $plugin, so its record stays unchanged and this update waits in $(tilde "$journal")"
+        [[ $replay != 1 ]] || return 3
         return 1
       fi
     fi
@@ -1744,6 +1859,7 @@ journal_apply() {
       return 1
     fi
     [[ $replay != 1 || $installed == "$commit" ]] || return 3
+    if [[ $replay == 1 && $tool == codex && $(codex_market_commit 2>/dev/null || true) != "$installed" ]]; then return 3; fi
     actual_commits[p]=$installed actual_trees[p]=$tree
     [[ $installed == "$commit" ]] || raced=1
   done
@@ -1790,7 +1906,7 @@ journal_apply() {
     record_write "$tool" "${plugins[p]}" "${actual_commits[p]}" "${actual_trees[p]}" || return 1
   done
   journal_save_sources "$tool" "$journal" unapplied || return 1
-  rm -rf "$journal" || return 1
+  rm -rf "$journal" "$p3stack_home/repair/$tool" || return 1
   if ((raced && chose)); then say "  p3stack released again while you were choosing, or the tool installed a different release. Your choices were kept, and you'll be asked about any newer change next time."; fi
   if ((had_record == 0)) && [[ $scanned_tools == *" $tool "* ]]; then say "  Saved a record for next time."; fi
 }
@@ -1798,6 +1914,11 @@ journal_apply() {
 journal_rollback() {
   local tool=$1 journal=$pending/$1 i plugin root dest installed tree safe bases=$work/rollback-bases
   journal_load "$tool" || return 1
+  if [[ $tool == cursor ]]; then
+    for plugin in "${plugins[@]}"; do
+      [[ ! -f $p3stack_home/repair/cursor/$plugin ]] || mkdir -p "$cursor_local/$plugin" || return 1
+    done
+  fi
   if [[ $tool == claude ]]; then
     for plugin in "${plugins[@]}"; do
       root=$(claude_root "$plugin" allow-missing 2>/dev/null || true)
@@ -1811,6 +1932,7 @@ journal_rollback() {
     [[ -n $root ]] || root=${row_root[i]}
     dest=$root/${row_path[i]}
     safe=${row_release[i]}
+    [[ -z $new_release ]] || safe+=" $(release_hash "$new_release" "${row_plugin[i]}" "${row_path[i]}")"
     installed=$("${tool}_commit" "${row_plugin[i]}" 2>/dev/null || true)
     if [[ -n $installed ]] && tree=$(release_tree "$installed"); then
       safe+=" $(release_hash "$tree" "${row_plugin[i]}" "${row_path[i]}")"
