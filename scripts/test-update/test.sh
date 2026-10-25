@@ -1297,6 +1297,19 @@ test_listing_failure_stops_at_every_detection_phase() {
   done
 }
 
+test_codex_marketplace_listing_failure_during_replay_keeps_journal() {
+  setup replay-market-listing interrupted
+  stop_at_record_write
+  tools=codex expect_failure=1 update_answering "k\n"
+  rm "$dir/bin/cp"
+  fail_listing_at codex 1 'plugin marketplace list'
+  tools=codex expect_failure=1 update_answering "" P3STACK_NONINTERACTIVE=1
+  says 'codex plugin marketplace list'
+  never_says '$ codex plugin add'
+  exists "$home/.p3stack/pending/codex"
+  record_is codex "$old"
+}
+
 test_codex_listing_failure_does_not_fall_back_to_cache() {
   setup codex-list-failure copy
   fail_listing_at codex 1 'plugin list'
