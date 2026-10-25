@@ -300,7 +300,7 @@ test_interrupted_update_recovers_edits() {
   setup interrupted-update interrupted
   expect_failure=1 update_answering "k\n" P3STACK_FAKE_FAIL_AFTER_UPDATE=codex
   has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
-  says "Your files in Codex are as they were before this update."
+  says "Codex's update didn't finish. Your backed-up files were reconciled"
   update_answering "k\n"
   has "$codex/skills/poteto-mode/SKILL.md" "Write the code test first."
   recorded codex
