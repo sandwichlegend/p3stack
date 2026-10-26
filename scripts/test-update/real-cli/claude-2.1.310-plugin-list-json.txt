@@ -1,0 +1,4 @@
+$ claude plugin list --json
+[]
+
+exit: 0

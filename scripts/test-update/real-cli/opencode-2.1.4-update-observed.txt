@@ -1,0 +1,4 @@
+$ opencode plugin update github:sandwichlegend/p3stack
+No plugin updates available
+
+exit: 0

@@ -1,0 +1,4 @@
+$ cursor-agent --version
+2026.10.16-e3cb207
+
+exit: 0

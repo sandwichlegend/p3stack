@@ -1,0 +1,15 @@
+$ claude plugin list
+Installed plugins:
+
+  ❯ p3stack-team-kit@p3stack
+    Version: f79db5ab3659
+    Scope: user
+    Status: ✔ enabled
+
+  ❯ p3stack@p3stack
+    Version: f79db5ab3659
+    Scope: user
+    Status: ✔ enabled
+
+
+exit: 0

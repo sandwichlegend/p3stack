@@ -1,0 +1,4 @@
+$ opencode plugin list
+No plugins found
+
+exit: 0

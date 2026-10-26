@@ -1,0 +1,8 @@
+$ claude plugin marketplace list
+Configured marketplaces:
+
+  ❯ anthropic-plugin-directory
+    Source: Built in (Anthropic Directory)
+
+
+exit: 0

@@ -1,0 +1,7 @@
+$ codex plugin marketplace upgrade p3stack
+Upgraded marketplace `p3stack` to the latest configured revision.
+Installed marketplace root: <HOME>/.codex/.tmp/marketplaces/p3stack
+
+Before: installed SKILL.md contains CODEX_UPGRADE_REPLACES_INSTALLED_FILE_R5
+After: marker present=False
+exit: 0

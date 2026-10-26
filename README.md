@@ -141,6 +141,10 @@ Checks npm for a newer `p3stack` first and switches to it, so an old copy of the
 
 Start a new thread, or resume one, to load the update.
 
+Edits you make to an installed p3stack skill stay through `p3stack update`. It keeps an edited file that p3stack didn't change, and asks before it replaces one that p3stack also changed or removed, with an option to merge the two through a coding agent. Files you add stay too. If Claude Code or OpenCode updated p3stack in the background, it checks both the old folder and the new one, and asks which version to keep when you edited the same file in each. A skill you keep after p3stack drops it moves to `~/.agents/skills/`, which Codex, Cursor, and OpenCode read, with a link from `~/.claude/skills/` for Claude Code.
+
+Backups go in `~/.p3stack/edits/<tool>/<timestamp>-<release>-<run>/<plugin>/<path>` and are never deleted automatically. For a file's newest backup, run `ls -td ~/.p3stack/edits/<tool>/*/` and open the first folder containing that file. If a tool's update fails or is interrupted before it finishes, your files there go back as they were, and the next update asks again. If the run stops after the tool updated, the next run finishes it when the installed release still matches the plan. Otherwise it restores backed-up files over release content and scans again before reinstalling. If p3stack releases again while you choose, Keep and merge choices stay in place, Accept uses the release actually installed, and the next attended update asks about the newer change. Either way it never overwrites a file you changed since. It backs that file up and leaves it. The by-hand commands below skip all of this and overwrite your edits.
+
 By hand, Claude Code:
 
 ```shell

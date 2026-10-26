@@ -1,0 +1,4 @@
+$ opencode --version
+opencode v2.1.4
+
+exit: 0

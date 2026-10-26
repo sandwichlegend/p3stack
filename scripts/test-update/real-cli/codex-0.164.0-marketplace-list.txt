@@ -1,0 +1,5 @@
+$ codex plugin marketplace list
+MARKETPLACE  ROOT
+p3stack      <HOME>/.codex/.tmp/marketplaces/p3stack
+
+exit: 0

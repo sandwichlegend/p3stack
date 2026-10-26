@@ -1,0 +1,44 @@
+$ codex plugin list --json
+{
+  "installed": [
+    {
+      "pluginId": "p3stack@p3stack",
+      "name": "p3stack",
+      "marketplaceName": "p3stack",
+      "version": "1.0.0",
+      "installed": true,
+      "enabled": true,
+      "source": {
+        "source": "local",
+        "path": "<HOME>/.codex/.tmp/marketplaces/p3stack/p3stack"
+      },
+      "marketplaceSource": {
+        "sourceType": "git",
+        "source": "https://github.com/sandwichlegend/p3stack.git"
+      },
+      "installPolicy": "AVAILABLE",
+      "authPolicy": "ON_INSTALL"
+    },
+    {
+      "pluginId": "p3stack-team-kit@p3stack",
+      "name": "p3stack-team-kit",
+      "marketplaceName": "p3stack",
+      "version": "1.0.0",
+      "installed": true,
+      "enabled": true,
+      "source": {
+        "source": "local",
+        "path": "<HOME>/.codex/.tmp/marketplaces/p3stack/team-kit"
+      },
+      "marketplaceSource": {
+        "sourceType": "git",
+        "source": "https://github.com/sandwichlegend/p3stack.git"
+      },
+      "installPolicy": "AVAILABLE",
+      "authPolicy": "ON_INSTALL"
+    }
+  ],
+  "available": []
+}
+
+exit: 0

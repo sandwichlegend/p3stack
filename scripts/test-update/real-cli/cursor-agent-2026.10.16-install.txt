@@ -1,0 +1,4 @@
+$ cursor-agent plugin install p3stack@p3stack
+error: too many arguments for 'plugin'. Expected 0 arguments but got 2.
+
+exit: 1

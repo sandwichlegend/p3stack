@@ -1,0 +1,6 @@
+$ opencode plugin update github:sandwichlegend/p3stack
+before:
+.cache/opencode/npm/git-p3stack-c0e8baf9626c/1792900204809/node_modules/p3stack
+after:
+.cache/opencode/npm/git-p3stack-c0e8baf9626c/1792900204809/node_modules/p3stack
+exit: 0

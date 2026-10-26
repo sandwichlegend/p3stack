@@ -1,0 +1,4 @@
+$ claude plugin install p3stack@p3stack
+Installing plugin "p3stack@p3stack"...✔ Successfully installed plugin: p3stack@p3stack (scope: user)
+
+exit: 0

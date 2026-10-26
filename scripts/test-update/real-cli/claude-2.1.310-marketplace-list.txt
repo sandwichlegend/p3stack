@@ -1,0 +1,11 @@
+$ claude plugin marketplace list
+Configured marketplaces:
+
+  ❯ anthropic-plugin-directory
+    Source: Built in (Anthropic Directory)
+
+  ❯ p3stack
+    Source: GitHub (sandwichlegend/p3stack)
+
+
+exit: 0

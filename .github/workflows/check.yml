@@ -21,6 +21,12 @@ jobs:
         with:
           node-version: 24
       - run: node --test p3stack/skills/*/scripts/test/*.test.mjs
+      - run: |
+          export HOME=$(mktemp -d /tmp/p3stack-ci.XXXXXXXX)
+          export CLAUDE_CONFIG_DIR=$HOME/.claude CODEX_HOME=$HOME/.codex
+          export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share
+          export XDG_CACHE_HOME=$HOME/.cache XDG_STATE_HOME=$HOME/.local/state
+          bash scripts/test-update/test.sh
       - uses: oven-sh/setup-bun@v2
       - working-directory: p3stack/skills/poteto-mode/scripts
         run: |

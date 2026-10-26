@@ -1,0 +1,5 @@
+$ claude plugin update p3stack@p3stack
+Checking for updates for plugin "p3stack@p3stack"…
+✔ p3stack is already at the latest version (f79db5ab3659).
+
+exit: 0
