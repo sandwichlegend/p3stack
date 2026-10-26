@@ -331,12 +331,12 @@ test_backups_are_immutable_generations() {
   echo "Second user edit." >>"$claude/skills/poteto-mode/SKILL.md"
   update_answering "n\n"
   same "$first" "$dir/first-backup"
-  [[ $(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l) == 2 ]] || fail "expected two backup generations"
+  (( $(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l) == 2 )) || fail "expected two backup generations"
   update_answering ""
   local count
   count=$(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l)
   update_answering ""
-  [[ $(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l) == "$count" ]] || fail "unchanged backup was duplicated"
+  (( $(find "$home/.p3stack/edits/claude" -type f -name SKILL.md | wc -l) == $count )) || fail "unchanged backup was duplicated"
 }
 
 test_merges_get_their_own_folder() {
@@ -470,7 +470,7 @@ test_added_files_offer_copy_and_ignore_tool_markers() {
   update_answering "y\n"
   asked 1
   has "$home/.cursor/plugins/local/p3stack/skills/poteto-mode/references/mine.md" "My own reference."
-  [[ $(find "$home/.p3stack/edits" -type f | wc -l) == 1 ]] || fail "backed up tool markers"
+  (( $(find "$home/.p3stack/edits" -type f | wc -l) == 1 )) || fail "backed up tool markers"
 }
 
 test_deleted_files_report_once() {
@@ -1255,10 +1255,10 @@ test_two_leftover_versions_back_up_only_their_own_edits() {
   recorded claude
   has "$(find "$home/.p3stack/edits/claude" -path "*/p3stack/${old:0:12}/skills/poteto-mode/SKILL.md" | head -1)" 'Write the code test first.'
   has "$(find "$home/.p3stack/edits/claude" -path "*/p3stack/${new:0:12}/skills/poteto-mode/SKILL.md" | head -1)" SECOND_LEFTOVER_EDIT
-  [[ $(find "$home/.p3stack/edits/claude" -type f | wc -l) == 2 ]] || fail "pristine files from another release were called user edits"
+  (( $(find "$home/.p3stack/edits/claude" -type f | wc -l) == 2 )) || fail "pristine files from another release were called user edits"
   (load_fixture || exit 99; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
   tools=claude action=install update_answering "" P3STACK_NONINTERACTIVE=1
-  [[ $(find "$home/.p3stack/edits/claude" -type f | wc -l) == 2 ]] || fail "identical leftovers weren't deduplicated"
+  (( $(find "$home/.p3stack/edits/claude" -type f | wc -l) == 2 )) || fail "identical leftovers weren't deduplicated"
   never_says 'backup failed'
 }
 
@@ -1441,7 +1441,7 @@ test_opencode_uninstalled_listing_backs_up_leftovers() {
   [[ -n $(grep -rl OPENCODE_LEFTOVER_EDIT "$home/.p3stack/edits/opencode" 2>/dev/null) ]] || fail 'OpenCode leftover edit has no backup'
   never_says 'No edited files.'
   says "isn't installed in OpenCode"
-  [[ $(find "$home/.p3stack/edits/opencode" -type f | wc -l) == 1 ]] || fail 'pristine OpenCode leftovers were backed up as edits'
+  (( $(find "$home/.p3stack/edits/opencode" -type f | wc -l) == 1 )) || fail 'pristine OpenCode leftovers were backed up as edits'
   recorded opencode
 }
 
