@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>p3stack update sandbox</title>
+  <link rel="stylesheet" href="/xterm.css">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/xterm.js" defer></script>
+  <script src="/fit.js" defer></script>
+  <script src="/client.mjs" type="module"></script>
+</head>
+<body>
+  <header><div><p class="eyebrow">p3stack / local playground</p><h1>Try an update.</h1></div><span class="badge">Isolated terminal · fake agents</span></header>
+  <main>
+    <nav aria-label="Update scenarios"><h2>Choose a starting point</h2><div id="scenarios"></div></nav>
+    <section class="workspace" aria-label="Sandbox workspace">
+      <div class="toolbar"><div><h2 id="title">Choose a scenario</h2><p id="hint">Each click loads a fresh install and release history.</p></div><button id="reset" disabled>Reset</button></div>
+      <p id="status" role="status">Ready to load a sandbox.</p>
+      <div id="terminal" aria-label="Interactive sandbox terminal"></div>
+      <footer>Real checkout CLI. Local fixture releases. No model calls.<br>Reset discards this terminal's edits. Your other tabs have separate sandboxes.</footer>
+    </section>
+  </main>
+</body>
+</html>

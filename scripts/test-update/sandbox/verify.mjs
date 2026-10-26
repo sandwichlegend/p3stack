@@ -1,0 +1,185 @@
+import { execFileSync, spawnSync } from "node:child_process"
+import assert from "node:assert/strict"
+import { mkdtemp, readFile, unlink, readdir, rm } from "node:fs/promises"
+import { realpathSync } from "node:fs"
+import { join } from "node:path"
+import * as pty from "node-pty"
+import { isolation, prepare } from "./sandbox.mjs"
+import { scenarios } from "./scenarios.mjs"
+import { verifyHttp } from "./verify-http.mjs"
+
+const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`
+const hidden = ["/home", "/root", "/usr/lib/chatgpt/resources/codex", "/usr/bin/codex", "/usr/bin/claude"]
+for (const name of ["claude", "codex", "cursor-agent", "opencode"]) {
+  const paths = execFileSync("/bin/bash", ["-c", `type -ap ${name} || true`], { encoding: "utf8" }).trim().split("\n").filter(Boolean)
+  hidden.push(...paths, ...paths.map((path) => realpathSync(path)))
+}
+const scratch = await mkdtemp("/tmp/p3stack-sandbox-verify-")
+for (const key of ["HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"]) {
+  for (const file of ["server.mjs", "sandbox.mjs", "verify.mjs", "verify-http.mjs"]) {
+    const refused = spawnSync(process.execPath, [new URL(file, import.meta.url).pathname], {
+      env: { ...process.env, [key]: "/home/liam" }, encoding: "utf8",
+    })
+    assert.notEqual(refused.status, 0, `${file} accepted unsafe ${key}`)
+    assert.match(refused.stderr, /refusing:/)
+  }
+  for (const [program, file] of [["bash", "bootstrap.sh"], ["python3", "merge-agent.py"]]) {
+    const refused = spawnSync(program, [new URL(file, import.meta.url).pathname, "clean", join(scratch, "unused")], {
+      env: { ...process.env, [key]: "/home/liam" }, encoding: "utf8",
+    })
+    assert.notEqual(refused.status, 0, `${file} accepted unsafe ${key}`)
+    assert.match(refused.stderr + refused.stdout, /refusing:/)
+  }
+}
+const missingEnv = await mkdtemp(join(scratch, "missing-env-"))
+await prepare(missingEnv, scenarios.find((scenario) => scenario.id === "clean"))
+await unlink(`${missingEnv}/work/env.sh`)
+const refusedShell = spawnSync("bwrap", [...isolation(missingEnv), "/bin/bash", "--noprofile", "--rcfile", "/tmp/sandbox/shell.rc", "-i"], { encoding: "utf8", env: {} })
+assert.notEqual(refusedShell.status, 0, "missing env file allowed the shell to start")
+assert.match(refusedShell.stdout + refusedShell.stderr, /refusing: missing fixture env file/)
+console.log("unsafe homes and a missing env file are rejected before any tool runs")
+
+const answers = {
+  copy: [["Choose Y/N", "y"]],
+  "edited-while-updating": [["Choose K/A/T", "a"]],
+  both: [["Choose K/A/T", "t"], ["Choose 1/2", "1"], ["Choose Y/N", "y"]],
+  removed: [["Choose K/A", "k"]],
+  first: [["Choose K/A", "a"]],
+  script: [["Choose K/A/T", "t"], ["Choose 1", "1"]],
+  interrupted: [["Choose K/A/T", "k"]],
+  "released-while-choosing": [["Choose K/A/T", "k"]],
+  "removed-file": [["Choose K/A", "a"], ["Choose K/A", "k"]],
+  "auto-updated": [["Choose K/A/T", "k"]],
+  "edit-after-failure": [["Choose K/A/T", "k"]],
+  "team-kit-auto-updated": [["Choose A/O/T", "a"]],
+}
+const expected = {
+  clean: "No edited files.", kept: "Kept your version of poteto-mode.",
+  copy: "Copied your poteto-mode from Claude Code", both: "Installed the merged poteto-mode",
+  hand: "Marked it edited.", nobody: "No one is at the keyboard to choose",
+  removed: "Moved your recall to ~/.agents/skills/recall", first: "Installed p3stack's versions.",
+  script: "Installed the merged poteto-mode/scripts/watch-pr/github.ts",
+  interrupted: "Codex's update didn't finish. Your backed-up files were reconciled",
+  added: "Kept your file skills/poteto-mode/references/mine.md.",
+  "removed-file": "Kept your file skills/recall/references/notes.md.",
+  "auto-updated": "Kept your version of poteto-mode.",
+  "stale-plugin": "No edited files.",
+  "edit-after-failure": "Kept your version of poteto-mode.",
+  "team-kit-auto-updated": "Kept your version of deslop.",
+  "released-while-choosing": "p3stack released again while you were choosing",
+  "removed-through-tool": "isn't installed in Claude Code",
+  "edited-while-updating": "after the scan",
+  "two-leftover-versions": "isn't installed in Claude Code",
+  "tool-without-p3stack": "Kept your version of poteto-mode.",
+}
+const files = {
+  "edited-while-updating": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "An edit made while the update was running."],
+  "released-while-choosing": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "Write the code test first."],
+  "edit-after-failure": ["home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode/SKILL.md", "An edit made after the failed update."],
+  "team-kit-auto-updated": ["home/.claude/plugins/cache/p3stack/p3stack-team-kit", "An edit made after the background auto-update."],
+  "tool-without-p3stack": ["home/.cursor/plugins/local/p3stack/skills/poteto-mode/SKILL.md", "name: poteto-mode"],
+}
+try {
+  for (const scenario of scenarios) {
+    const dir = await mkdtemp(join(scratch, `${scenario.id}-`))
+    await prepare(dir, scenario)
+    const installedTool = (await readdir(join(dir, "fixture-bin")))[0]
+    const shell = pty.spawn("bwrap", [...isolation(dir), "/bin/bash", "--noprofile", "--rcfile", "/tmp/sandbox/shell.rc", "-i"], { cwd: dir, env: {}, cols: 120, rows: 40 })
+    let output = ""
+    shell.onData((data) => { output += data })
+    const wait = async (text, since = 0) => {
+      const deadline = Date.now() + 15000
+      while (!output.slice(since).includes(text)) {
+        assert(Date.now() < deadline, `${scenario.id}: missing ${text}\n${output}`)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+    }
+    try {
+      await wait("/tmp/sandbox/work $ ")
+      let since = output.length
+      shell.write("p3stack update; printf '\\nUPDATE_EXIT=%s\\n' \"$?\"\r")
+      await wait("enter confirm", since)
+      since = output.length
+      shell.write("\r")
+      for (const [prompt, answer] of answers[scenario.id] || []) {
+        await wait(prompt, since)
+        since = output.length
+        shell.write(`${answer}\r`)
+      }
+      await wait("/tmp/sandbox/work $ ", since)
+      if (scenario.id === "interrupted") {
+        assert(output.includes("\r\nUPDATE_EXIT=1\r\n"), output)
+        since = output.length
+        shell.write("unset P3STACK_FAKE_FAIL_AFTER_UPDATE; p3stack update; printf '\\nUPDATE_EXIT=%s\\n' \"$?\"\r")
+        await wait("enter confirm", since)
+        since = output.length
+        shell.write("\r")
+        await wait("Choose K/A/T", since)
+        since = output.length
+        shell.write("k\r")
+        await wait("/tmp/sandbox/work $ ", since)
+      }
+      assert(output.includes(expected[scenario.id]), output)
+      assert(output.includes("\r\nUPDATE_EXIT=0\r\n"), output)
+      if (files[scenario.id]) {
+        const [path, text] = files[scenario.id]
+        const found = execFileSync("grep", ["-rlF", text, `${dir}/work/${path}`], { encoding: "utf8" })
+        assert(found.trim(), `${scenario.id}: ${path} lacks ${text}`)
+      }
+      if (scenario.id === "edited-while-updating") {
+        const base = `${dir}/work/home/.codex/plugins/cache/p3stack/p3stack/1.0.0/skills/poteto-mode`
+        assert((await readFile(`${base}/mine.txt`, "utf8")).includes("A file added while the update was running."))
+        for (const text of ["An edit made while the update was running.", "A file added while the update was running."]) {
+          assert(execFileSync("grep", ["-rlF", text, `${dir}/work/home/.p3stack/edits/codex`], { encoding: "utf8" }).trim())
+        }
+      }
+      if (scenario.id === "two-leftover-versions") {
+        const [old, latest] = (await readFile(`${dir}/work/releases`, "utf8")).trim().split("\n")
+        for (const [version, text] of [[old, "Write the code test first."], [latest, "An edit in the newer leftover Claude version."]]) {
+          const saved = execFileSync("grep", ["-rlF", text, `${dir}/work/home/.p3stack/edits/claude`], { encoding: "utf8" }).trim()
+          assert(saved.includes(`/p3stack/${version.slice(0, 12)}/skills/poteto-mode/SKILL.md`), saved)
+        }
+      }
+      if (scenario.id === "released-while-choosing") {
+        const bases = await readFile(`${dir}/work/home/.p3stack/installed/codex/bases`, "utf8")
+        const [old] = (await readFile(`${dir}/work/releases`, "utf8")).split("\n")
+        assert(bases.includes(old), "the kept edit retains its earlier base")
+        assert(!output.includes("You changed poteto-mode again"), output)
+      }
+      if (scenario.id === "removed-through-tool") {
+        const saved = execFileSync("grep", ["-rlF", "Write the code test first.", `${dir}/work/home/.p3stack/edits/claude`], { encoding: "utf8" })
+        assert(saved.trim(), "the removed plugin's leftover edit stays backed up")
+        const listing = await readFile(`${dir}/work/home/.claude/plugins/installed.tsv`, "utf8")
+        assert(listing.includes("p3stack-team-kit"), "the tool lists both plugins after reinstall")
+        assert(!output.includes("Choose K/A"), output)
+      }
+      if (scenario.id === "tool-without-p3stack") assert(!output.includes("Using the commit Cursor installed"), output)
+      if (scenario.id === "both" || scenario.id === "script") {
+        const folder = scenario.id === "both" ? "poteto-mode/SKILL.md" : "poteto-mode/scripts/watch-pr/github.ts"
+        const extension = scenario.id === "both" ? "md" : "ts"
+        const merged = await readFile(`${dir}/work/home/.p3stack/merge/claude/p3stack/skills/${folder}/result.${extension}`, "utf8")
+        assert(merged.includes(scenario.id === "both" ? "Write the code test first." : 'return [branch, "main"]'))
+        assert(merged.includes(scenario.id === "both" ? "Pause before force-pushes." : "if (!branch) return []"))
+      }
+      since = output.length
+      shell.write(`python3 -c 'import ctypes, pyexpat, sqlite3, ssl; print("PYTHON_OK")'; nano --version; file /etc/passwd\r`)
+      await wait("/tmp/sandbox/work $ ", since)
+      assert(output.slice(since).includes("\r\nPYTHON_OK\r\n"), output)
+      assert(output.slice(since).includes("GNU nano"), output)
+      assert(output.slice(since).includes("ASCII text"), output)
+      since = output.length
+      shell.write(`${hidden.map((path) => `test ! -e ${quote(path)}`).join(" && ")} && ! touch /checkout/.sandbox-write-probe && ! touch /usr/.sandbox-write-probe && ! touch /etc/.sandbox-write-probe && test "$HOME" = /tmp/sandbox/work/home && test "$(command -v ${installedTool})" = /tmp/sandbox/work/bin/${installedTool} && test "$(command -v nano)" = /tmp/sandbox/work/sys/nano && echo ISOLATION_OK\r`)
+      await wait("/tmp/sandbox/work $ ", since)
+      assert(output.slice(since).includes("\r\nISOLATION_OK\r\n"), output)
+      console.log(`${scenario.id}: real CLI, expected result, isolation checks passed`)
+    } finally {
+      const exited = new Promise((resolve) => shell.onExit(resolve))
+      shell.kill()
+      await exited
+    }
+  }
+} finally {
+  await rm(scratch, { recursive: true, force: true })
+}
+
+await verifyHttp()

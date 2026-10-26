@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ $HOME == /tmp/* ]] || { echo "refusing: HOME=$HOME"; exit 99; }
 
-scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin edit-after-failure team-kit-auto-updated tool-without-p3stack"
+scenarios="clean kept copy both hand nobody removed first script interrupted added removed-file auto-updated stale-plugin edit-after-failure team-kit-auto-updated tool-without-p3stack released-while-choosing removed-through-tool edited-while-updating two-leftover-versions"
 scenario=${1:-}
 [[ " $scenarios " == *" $scenario "* && -n ${2:-} ]] || { echo "usage: fixtures.sh <$(tr ' ' '|' <<<"$scenarios")> <dir>" >&2; exit 2; }
 
@@ -26,7 +26,7 @@ done
 
 case $scenario in
   added) tools="codex cursor-agent" ;;
-  interrupted|edit-after-failure) tools="codex" ;;
+  interrupted|edit-after-failure|released-while-choosing|edited-while-updating) tools="codex" ;;
   removed) tools="claude codex opencode" ;;
   clean) tools="claude codex cursor-agent opencode" ;;
   copy|both|nobody|first) tools="claude codex" ;;
@@ -42,8 +42,10 @@ environment() {
     XDG_CACHE_HOME "$home/.cache" XDG_CONFIG_HOME "$home/.config" \
     XDG_DATA_HOME "$home/.local/share" XDG_STATE_HOME "$home/.local/state"
   cat <<'EOF'
-unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE
+unset P3STACK_NONINTERACTIVE P3STACK_TTY P3STACK_REPO_DIR P3STACK_FAKE_MERGE P3STACK_FAKE_FAIL_AFTER_UPDATE P3STACK_FAKE_JSON P3STACK_FAKE_SKIP_UPDATE P3STACK_FAKE_REMOVE_AFTER_UPDATE P3STACK_FAKE_RELEASE_DURING_UPDATE P3STACK_FAKE_LATE_EDIT
 EOF
+  [[ $scenario != released-while-choosing ]] || echo "export P3STACK_FAKE_RELEASE_DURING_UPDATE=1"
+  [[ $scenario != edited-while-updating ]] || echo "export P3STACK_FAKE_LATE_EDIT=1"
 }
 
 env_tmp=$(mktemp "$dir/.env.XXXXXXXX")
@@ -150,9 +152,9 @@ case $scenario in
     change p3stack/skills/poteto-mode/SKILL.md
     rm -rf "$home/.p3stack/installed"
     ;;
-  interrupted|edit-after-failure) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  interrupted|edit-after-failure|released-while-choosing|edited-while-updating) edit codex skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
   team-kit-auto-updated) edit claude-team-kit skills/deslop/SKILL.md 1 ;;
-  tool-without-p3stack) edit claude skills/poteto-mode/SKILL.md 1 ;;
+  removed-through-tool|tool-without-p3stack) edit claude skills/poteto-mode/SKILL.md 1 ;;
   added)
     for root in "$home/.codex/plugins/cache/p3stack/p3stack/1.0.0" "$home/.cursor/plugins/local/p3stack"; do
       mkdir -p "$root/skills/poteto-mode/references"
@@ -164,7 +166,7 @@ case $scenario in
     echo "echo my-hook" >>"$(installed claude hooks/session-start)"
     git rm --quiet p3stack/skills/recall/references/notes.md p3stack/hooks/session-start
     ;;
-  auto-updated) edit claude skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
+  auto-updated|two-leftover-versions) edit claude skills/poteto-mode/SKILL.md 1; change p3stack/skills/poteto-mode/SKILL.md ;;
   stale-plugin) change p3stack/skills/poteto-mode/SKILL.md ;;
   script) edit claude skills/poteto-mode/scripts/watch-pr/github.ts 0; change p3stack/skills/poteto-mode/scripts/watch-pr/github.ts ;;
 esac
@@ -182,6 +184,14 @@ case $scenario in
   edit-after-failure)
     (load_environment; P3STACK_NONINTERACTIVE=1 P3STACK_FAKE_FAIL_AFTER_UPDATE=codex bash "$installer" update) >"$dir/failed-update.log" 2>&1 || true
     echo "An edit made after the failed update." >>"$(installed codex skills/poteto-mode/SKILL.md)"
+    ;;
+  two-leftover-versions)
+    (eval "$(environment)"; claude plugin update p3stack@p3stack)
+    echo "An edit in the newer leftover Claude version." >>"$(installed claude skills/poteto-mode/SKILL.md)"
+    (eval "$(environment)"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
+    ;;
+  removed-through-tool)
+    (eval "$(environment)"; claude plugin uninstall p3stack@p3stack; claude plugin uninstall p3stack-team-kit@p3stack)
     ;;
   tool-without-p3stack) mkdir -p "$home/.cursor" ;;
 esac
