@@ -11,11 +11,13 @@ CONFIG = {
     "XDG_CACHE_HOME": ".cache",
     "XDG_STATE_HOME": ".local/state",
 }
+# macOS links /tmp to /private/tmp, so compare resolved paths.
+TMP = Path("/tmp").resolve()
 
 
 def check(owned=False):
     home = Path(os.environ.get("HOME", "/")).resolve()
-    if not str(home).startswith("/tmp/"):
+    if not home.is_relative_to(TMP) or home == TMP:
         raise ValueError(f"refusing: HOME={home}")
     for key in CONFIG:
         value = os.environ.get(key)
@@ -30,11 +32,10 @@ def check(owned=False):
 
 def create(parent):
     check()
-    parent = Path(parent).resolve()
-    if not str(parent).startswith("/tmp/"):
+    if not str(parent).startswith("/tmp/") or not Path(parent).resolve().is_relative_to(TMP):
         raise ValueError("refusing: test folder must be inside /tmp")
     home = Path(tempfile.mkdtemp(prefix="home.", dir=parent))
-    (home / ".p3stack-test-home").write_text(str(home) + "\n")
+    (home / ".p3stack-test-home").write_text(str(home.resolve()) + "\n")
     print(home)
 
 

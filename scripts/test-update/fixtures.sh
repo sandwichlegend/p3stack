@@ -10,7 +10,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 installer=$(cd "$here/../.." && pwd)/install.sh
 python3 -I "$here/safe-home.py" check
 [[ $2 == /tmp/* && -d $2 && ! -L $2 && -z $(ls -A "$2") ]] || { echo "refusing: fixture target must be new and empty under /tmp" >&2; exit 99; }
-dir=$(cd "$2" && pwd -P)
+dir=$(cd "$2" && pwd)
 [[ $dir == /tmp/* ]] || exit 99
 created_home=$(python3 -I "$here/safe-home.py" create "$dir")
 ln -s "${created_home##*/}" "$dir/home"

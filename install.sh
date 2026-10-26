@@ -2133,11 +2133,15 @@ lock_held() {
   return 1
 }
 
+# The lock folder's inode tells whether another command replaced it. Holding it open on fd 9 stops the inode being reused. macOS's /dev/fd reports a different device, so compare inode numbers, not -ef.
+lock_inode() { ls -di "$1" 2>/dev/null | awk '{ print $1 }'; }
+
 update_lock() {
-  local lock=$p3stack_home/lock pid args stale
+  local lock=$p3stack_home/lock pid args stale inode
   mkdir -p "$p3stack_home"
   if ! mkdir "$lock" 2>/dev/null; then
     exec 9<"$lock"
+    inode=$(lock_inode "$lock")
     pid=$(cat "$lock/pid" 2>/dev/null || true)
     if lock_owner_alive "$lock"; then lock_held "another p3stack command${pid:+ (PID $pid)} is running or starting."; return 1; fi
     if ! mkdir "$lock/reclaim" 2>/dev/null; then
@@ -2149,7 +2153,7 @@ update_lock() {
     printf '%s\n' "$$" >"$lock/reclaim/pid"
     stale=$pid
     pid=$(cat "$lock/pid" 2>/dev/null || true)
-    if [[ ! $lock -ef /dev/fd/9 ]] || { [[ -n $pid && $pid != *[!0-9]* && $pid != "$stale" ]] && kill -0 "$pid" 2>/dev/null; }; then
+    if [[ -z $inode || $(lock_inode "$lock") != "$inode" ]] || { [[ -n $pid && $pid != *[!0-9]* && $pid != "$stale" ]] && kill -0 "$pid" 2>/dev/null; }; then
       rm "$lock/reclaim/pid"
       rmdir "$lock/reclaim"
       lock_held "another p3stack command acquired the lock."
