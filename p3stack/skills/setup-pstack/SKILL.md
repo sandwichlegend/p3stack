@@ -11,7 +11,7 @@ Write `~/.p3stack/models.md`, the file every p3stack skill reads to pick a model
 
 ### 1. Detect available models
 
-Call `orchestrator_capabilities` from the `t3-code` MCP server. Every model in a provider's `models` list is a candidate, and it is runnable when that provider's `canRunChildTask` is true. Note each provider whose `constraints` explain why it can't run tasks, such as "Provider is not authenticated", so you can tell the user. Never write a model id the catalog didn't list. `inherit` is always valid.
+Call `orchestrator_capabilities` from the `t3-code` MCP server. Its `models` lists are short, and `omittedModels` counts what each one hides. Call it again with `search` set to each model id the current file or the step 5 defaults name, and to any model the user asks about. A model is a candidate when a search lists that exact id, and it is runnable when a provider listing it has `canRunChildTask` true. Note each provider whose `constraints` explain why it can't run tasks, such as "Provider is not authenticated", so you can tell the user. Never write a model id the catalog didn't list. `inherit` is always valid.
 
 ### 2. Load current state
 
@@ -32,7 +32,7 @@ The defaults are the file shape in step 5. If `~/.p3stack/models.md` exists, rea
 
 ### 4. Validate
 
-Every model in a seat must appear in the step 1 catalog under some provider. `inherit` always passes. If a chosen model isn't in the catalog, stop and ask again.
+A `search` for each seat's exact model id must list it under some provider. `inherit` always passes. If a chosen model isn't in the catalog, stop and ask again.
 
 ### 5. Write the file
 
