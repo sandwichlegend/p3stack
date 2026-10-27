@@ -11,7 +11,7 @@ Write `~/.p3stack/models.md`, the file every p3stack skill reads to pick a model
 
 ### 1. Detect available models
 
-Call `orchestrator_capabilities` from the `t3-code` MCP server. Every model in a provider's `models` list is a candidate, and it is runnable when that provider's `canRunChildTask` is true. Note each provider whose `constraints` explain why it can't run tasks, such as "Provider is not authenticated", so you can tell the user. Never write a model id the catalog didn't list. `inherit` is always valid.
+Call `orchestrator_capabilities` from the `t3-code` MCP server. Its `models` lists are short, and `omittedModels` counts what each one hides. Call it again with `search` set to each model id the current file or the step 5 defaults name, and to any model the user asks about. A model is a candidate when a search lists that exact id. Record every provider instance that lists it with `canRunChildTask` true, because each one is a harness that can run it. Note each provider whose `constraints` explain why it can't run tasks, such as "Provider is not authenticated", so you can tell the user. Never write a model id the catalog didn't list. `inherit` is always valid.
 
 ### 2. Load current state
 
@@ -28,19 +28,21 @@ The defaults are the file shape in step 5. If `~/.p3stack/models.md` exists, rea
 
 **(b) Apply it.** Build the working table from the defaults, and on a re-run keep any seat the user changed. `unlimited`, `large`, `medium`, and `small` set the effort of every seat, fallbacks and panel seats included, to `max`, `xhigh`, `high`, or `medium`. A model that doesn't offer the level runs at the highest level it offers below it, so `unlimited` leaves Grok at `xhigh`. `inherit` seats don't change.
 
-**(c) Show the roles and confirm.** Show every role with its seats. Mark a seat whose model isn't runnable right now, and name the provider constraint that blocks it. A blocked seat still falls back at spawn time, so it is a warning, not an error. Also list each line step 2 dropped. Ask whether to accept as-is or change specific roles, offering the runnable models plus `inherit` (this role runs on the parent chat's model). For panel roles (`arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers`) the value is a list, and one agent runs per seat, so the list length sets the count. Seat models from different labs, because labs make a panel diverse. `arena cross-judge pool` is also a list, but Arena picks one seat from it whose lab differs from the parent's when possible. `swarm workers` is the default model for every worker unless a race or comparison assigns another model per arm. Ask for `max parallel writers` too, the cap on worktree agents running at once on this machine.
+**(c) Show the roles and confirm.** Show every role with its seats, including any `via` a seat already has. Mark a seat whose model isn't runnable right now, and name the provider constraint that blocks it. A blocked seat still falls back at spawn time, so it is a warning, not an error. Also list each line step 2 dropped. Ask whether to accept as-is or change specific roles, offering the runnable models plus `inherit` (this role runs on the parent chat's model). For panel roles (`arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers`) the value is a list, and one agent runs per seat, so the list length sets the count. Seat models from different labs, because labs make a panel diverse. `arena cross-judge pool` is also a list, but Arena picks one seat from it whose lab differs from the parent's when possible. `swarm workers` is the default model for every worker unless a race or comparison assigns another model per arm. Ask for `max parallel writers` too, the cap on worktree agents running at once on this machine.
+
+**(d) Pin or keep open.** For each model in the confirmed table that more than one runnable harness lists, or whose seats already have a `via`, ask whether to pin it or keep it open. Use the structured question tool, one question per model, and name the current `via` when its seats have one. Offer `Keep open` (runs `claude-*` on `claudeAgent` and `gpt-*` on `codex` when they can, otherwise the first harness that lists it), then one option per runnable harness, labeled with its `providerInstanceId`. When the model's seats already disagree on `via`, also offer `Keep current pins`. Any other answer applies to every seat of that model. A model with no `via` that only one harness can run stays open without a question.
 
 ### 4. Validate
 
-Every model in a seat must appear in the step 1 catalog under some provider. `inherit` always passes. If a chosen model isn't in the catalog, stop and ask again.
+A `search` for each seat's exact model id must list it under some provider, and each `via` must name a `providerInstanceId` the catalog returns. A `via` instance that can't run the model right now is a step 3(c) warning, not a failure. `inherit` always passes. If a chosen model isn't in the catalog, stop and ask again.
 
 ### 5. Write the file
 
-Write `~/.p3stack/models.md` with a `# budget` line naming the chosen label and its effort, one line per role using the labels poteto-mode uses, and a `max parallel writers` line. Overwrite the whole file so re-runs stay idempotent. Create `~/.p3stack/` if it is missing. Shape:
+Write `~/.p3stack/models.md` with a `# budget` line naming the chosen label and its effort, one line per role using the labels poteto-mode uses, and a `max parallel writers` line. Append `via <providerInstanceId>` to each seat whose model was pinned in step 3(d). The shape below shows the defaults, which are all open. Overwrite the whole file so re-runs stay idempotent. Create `~/.p3stack/` if it is missing. Shape:
 
 ```
 # p3stack model configuration. One line per role. Delete a line to fall back to the default.
-# A seat is model@effort, +fast for fast mode, | between fallbacks. Commas separate panel seats. inherit runs on the parent model.
+# A seat is model@effort, +fast for fast mode, via <harness> to pin the provider instance, | between fallbacks. Commas separate panel seats. inherit runs on the parent model.
 # budget: large (xhigh)
 feature, refactoring: grok-4.7@xhigh | gpt-6.1-sol@xhigh
 bug-fix: grok-4.7@xhigh | gpt-6.1-sol@xhigh
