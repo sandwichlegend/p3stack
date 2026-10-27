@@ -21,7 +21,9 @@ jobs:
         with:
           node-version: 24
       - run: npm install --no-save fast-check@4.5.3
-      - run: node --disable-warning=ExperimentalWarning --test p3stack/skills/*/scripts/test/*.test.ts
+      - run: |
+          ls p3stack/skills/*/scripts/test/*.test.ts >/dev/null
+          node --disable-warning=ExperimentalWarning --test p3stack/skills/*/scripts/test/*.test.ts
       - uses: oven-sh/setup-bun@v2
       - working-directory: p3stack/skills/poteto-mode/scripts
         run: |
