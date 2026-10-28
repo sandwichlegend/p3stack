@@ -14,7 +14,7 @@ Every candidate gets the same prompt, so the prompt is the contract.
 
 1. State the artifact each candidate is producing.
 2. Derive the rubric, 3-6 concrete gradeable criteria for what success looks like on *this* task. It is the picker's tool in Phase D. Candidates only see the task.
-3. Pick the runners. Use the seats on the `arena runners` role, resolved per the Roles and models section of the **poteto-mode** skill. The default seats one model each from Anthropic, OpenAI, and xAI. An `inherit` seat on this role or the cross-judge pool runs on the parent model, so omit `target` for it. A seat with no runnable model fills from a lab the arena doesn't seat yet, per poteto-mode, and you say so. Spawn more runners when the arena covers multiple design directions. Use the same model N times when the work is generation-bound rather than judgment-sensitive. Pick each subagent's reasoning level and fast or standard speed for the job, per the Subagents section of the **poteto-mode** skill.
+3. Pick the runners. Use the seats on the `arena runners` role, resolved per the Roles and models section of the **poteto-mode** skill. The default seats one model each from Anthropic, OpenAI, and xAI. An `inherit` seat on this role runs on the parent model, so omit `target` for it. A seat with no runnable model fills from a lab the arena doesn't seat yet, per poteto-mode, or drops when no such lab is left, and you say so. If dropped seats leave fewer than two runners, add runners until there are two, or one when the role has one seat. Run each added runner on a remaining runner's model, or as `inherit` when none remain, and say so. This minimum overrides poteto-mode's rule to run a panel one seat short, and an added runner adds no lab diversity. Spawn more runners when the arena covers multiple design directions. Use the same model N times when the work is generation-bound rather than judgment-sensitive. Pick each subagent's reasoning level and fast or standard speed for the job, per the Subagents section of the **poteto-mode** skill.
 4. Give each candidate its own output location (`isolation: "worktree"` when candidates write code, otherwise `/tmp/arena-<slug>/candidate-<n>/`), per the **separate-before-serializing-shared-state** principle skill.
 
 ## Phase B: Fan out
@@ -25,11 +25,11 @@ If a candidate produces no output, proceed with N-1 and note the dropout.
 
 ## Phase C: Cross-judge
 
-After all Phase B candidates complete, choose one seat from the `arena cross-judge pool` role. Prefer a seat whose lab differs from the parent model's. Spawn one read-only judge with `role: "review"` on that seat, with "Do not edit, create, or delete files" in its brief. It sees the rubric and the candidates by path label, scores each criterion, and recommends a base with rationale. It runs in parallel with your reading in Phase D. Don't spawn it while candidates are still writing.
+After all Phase B candidates complete, choose one seat from the `arena cross-judge pool` role. The judge never comes from the parent model's lab, as the Roles and models section of the **poteto-mode** skill defines labs. Try only the pool's seats from another lab, in pool order. An `inherit` seat is the parent model, so it never judges. If no seat from another lab is runnable, try the default pool's seats (step 5 of the **setup-pstack** skill) from another lab the same way. If none of those runs, skip the judge, pick the base alone in Phase D, and say so. If you don't know the parent's model, try the pool's non-`inherit` seats in pool order and say that the lab check did not run. Spawn one read-only judge with `role: "review"` on that seat, with "Do not edit, create, or delete files" in its brief. It sees the rubric and the candidates by path label, scores each criterion, and recommends a base with rationale. It runs in parallel with your reading in Phase D. Don't spawn it while candidates are still writing.
 
 ## Phase D: Pick a base
 
-Read every candidate end to end before picking. Score each against the rubric criterion by criterion, not on holistic feel, and compare with the cross-judge. Agreement on the base confirms the pick. Disagreement means one of you is biased or the rubric was ambiguous. Read both rationales before deciding.
+Read every candidate end to end before picking. Score each against the rubric criterion by criterion, not on holistic feel, and compare with the cross-judge when Phase C ran one. Agreement on the base confirms the pick. Disagreement means one of you is biased or the rubric was ambiguous. Read both rationales before deciding.
 
 Pick the base a future maintainer can extend most easily without breaking invariants. When two feel tied, prefer the cleaner boundary or smaller API, per the Laziness Protocol.
 
@@ -45,4 +45,4 @@ Verify the synthesized artifact like any other output, per the **prove-it-works*
 
 ## Outputs
 
-One synthesized artifact, with a short synthesis note alongside naming the base and why, the cross-judge's verdict, each graft with its source candidate, what was rejected and why, any convergence or dropouts, and the verification result.
+One synthesized artifact, with a short synthesis note alongside naming the base and why, the cross-judge's verdict or that Phase C skipped the judge, each graft with its source candidate, what was rejected and why, any convergence or dropouts, and the verification result.
