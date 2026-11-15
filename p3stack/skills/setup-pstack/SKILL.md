@@ -17,11 +17,11 @@ Call `orchestrator_capabilities` from the `t3-code` MCP server. Its `models` lis
 
 The defaults are the file shape in step 5. If `~/.p3stack/models.md` exists, read it and treat its `# budget` line, its role lines, and its `max parallel writers` line as the current choices. Otherwise start from the defaults. A line whose role is not in step 5, such as `how explorer` or `why investigators`, is from a retired role. Drop it.
 
-A file without the `# defaults: 2` line comes from an older setup. That setup wrote a line for every role, so some of its seats are old defaults, not choices. An old seat is one whose model is `grok-4.7`. Before step 3, replace these lines:
+A file without the `# defaults: 2` line comes from an older setup. That setup wrote a line for every role, so some of its seats are old defaults, not choices. An old seat is one whose model is `grok-4.7`, at any effort or speed. Before step 3, replace these lines:
 
 - In `feature, refactoring`, `bug-fix`, `perf-issue`, `hillclimb`, `reflect tooling`, or `swarm workers`, an old first seat becomes the first seat of the role's step 5 line. The line's other seats stay.
-- In `hardest tasks`, a `claude-opus-*` first seat becomes the first seat of the role's step 5 line. The line's other seats stay.
-- In a panel role (`arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers`), a line that seats exactly one `claude-opus-*` seat, one `gpt-6.1-sol` seat, and one old seat, in any order, takes the role's step 5 line. In any other panel line, replace the old seats one at a time, left to right. Each becomes the first seat in the step 5 line from a lab the line doesn't seat yet, counting seats already replaced, or drops when no such lab is left.
+- In `hardest tasks`, a first seat whose model is `claude-opus-*` becomes the first seat of the role's step 5 line. The line's other seats stay.
+- In a panel role (`arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers`), a line of exactly three seats whose models are one `claude-opus-*`, `gpt-6.1-sol`, and `grok-4.7`, in any order, takes the role's step 5 line. In any other panel line, replace the old seats one at a time, left to right. Each becomes the first seat in the step 5 line from a lab the line doesn't seat yet, counting seats already replaced, or drops when no such lab is left.
 
 Every other seat is the user's choice and stays, including an old seat in any other position and every `inherit` seat. Tell the user which seats you replaced.
 
