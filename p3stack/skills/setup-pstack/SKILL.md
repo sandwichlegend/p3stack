@@ -19,11 +19,11 @@ The defaults are the file shape in step 5. If `~/.p3stack/models.md` exists, rea
 
 A file without the `# defaults: 2` line comes from an older setup. That setup wrote a line for every role, so some of its seats are old defaults, not choices. An old seat is one whose model is `grok-4.7`. Before step 3, replace these lines:
 
-- A line in `feature, refactoring`, `bug-fix`, `perf-issue`, `hillclimb`, `reflect tooling`, or `swarm workers` whose first seat is old takes the role's step 5 line.
-- A `hardest tasks` line whose first seat is `claude-opus-*` takes the role's step 5 line.
+- In `feature, refactoring`, `bug-fix`, `perf-issue`, `hillclimb`, `reflect tooling`, or `swarm workers`, an old first seat becomes the first seat of the role's step 5 line. The line's other seats stay.
+- In `hardest tasks`, a `claude-opus-*` first seat becomes the first seat of the role's step 5 line. The line's other seats stay.
 - In a panel role (`arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers`), a line that seats exactly one `claude-opus-*` seat, one `gpt-6.1-sol` seat, and one old seat, in any order, takes the role's step 5 line. In any other panel line, each old seat becomes the step 5 line's seat from a lab the line doesn't seat yet, or drops when no such lab is left.
 
-Every other seat is the user's choice and stays, including an old seat in any other position and every `inherit` seat. Tell the user which lines you replaced.
+Every other seat is the user's choice and stays, including an old seat in any other position and every `inherit` seat. Tell the user which seats you replaced.
 
 ### 3. Budget, map, and confirm
 
