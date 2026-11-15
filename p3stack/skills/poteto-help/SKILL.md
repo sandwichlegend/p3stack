@@ -43,7 +43,7 @@ Installing changes nothing until the user invokes a skill. Only `/setup-pstack` 
 
 If cost is the worry, say where the tokens go and how to spend fewer. pstack spends extra tokens on subagents and review panels. Rerun `/setup-pstack` and pick a smaller budget or cheaper models. A role set to `inherit` runs on the chat's model, which saves tokens when the chat runs on a cheaper model. A shorter panel list runs fewer subagents, one for each seat. Save `/poteto-mode` for work that needs rigor.
 
-p3stack is built for T3 Code. Its workflow skills, including `/poteto-mode`, `/how`, `/why`, and `/teach`, spawn subagents through T3 Code's `delegate_task` tool, so they need a T3 Code session with the `t3-code` MCP server. Outside T3 Code those parts don't work.
+p3stack is built for T3 Code. Its workflow skills, including `/poteto-mode`, `/how`, and `/teach`, spawn subagents through T3 Code's `delegate_task` tool, so they need a T3 Code session with the `t3-code` MCP server. Outside T3 Code those parts don't work.
 
 ## Start a task with `/poteto-mode`
 

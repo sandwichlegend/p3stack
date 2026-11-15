@@ -149,7 +149,7 @@ Each live lane runs in its own worktree on this machine at the PR head, on its o
 
 ## Appendix D. Links and reading list
 
-<Docs to read before editing. Which PRs get `<p3stack>/skills/how/SKILL.md` and `<p3stack>/skills/interrogate/SKILL.md`. The trail per `<p3stack>/skills/show-me-your-work/SKILL.md`.>
+<Docs to read before editing. Which PRs get `<p3stack>/skills/interrogate/SKILL.md`. The trail per `<p3stack>/skills/show-me-your-work/SKILL.md`.>
 ````
 
 **Reply:** the plan path, the PR ids with their dependencies and the review-gated set, what the prototypes proved and what stays unproven, and the check script's output.
