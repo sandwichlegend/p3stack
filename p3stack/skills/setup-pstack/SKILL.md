@@ -21,7 +21,7 @@ A file without the `# defaults: 2` line comes from an older setup. That setup wr
 
 - In `feature, refactoring`, `bug-fix`, `perf-issue`, `hillclimb`, `reflect tooling`, or `swarm workers`, an old first seat becomes the first seat of the role's step 5 line. The line's other seats stay.
 - In `hardest tasks`, a `claude-opus-*` first seat becomes the first seat of the role's step 5 line. The line's other seats stay.
-- In a panel role (`arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers`), a line that seats exactly one `claude-opus-*` seat, one `gpt-6.1-sol` seat, and one old seat, in any order, takes the role's step 5 line. In any other panel line, each old seat becomes the step 5 line's seat from a lab the line doesn't seat yet, or drops when no such lab is left.
+- In a panel role (`arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers`), a line that seats exactly one `claude-opus-*` seat, one `gpt-6.1-sol` seat, and one old seat, in any order, takes the role's step 5 line. In any other panel line, replace the old seats one at a time, left to right. Each becomes the first seat in the step 5 line from a lab the line doesn't seat yet, counting seats already replaced, or drops when no such lab is left.
 
 Every other seat is the user's choice and stays, including an old seat in any other position and every `inherit` seat. Tell the user which seats you replaced.
 
