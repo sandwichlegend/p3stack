@@ -262,7 +262,7 @@ type [`/automate-me`](./skills/automate-me/SKILL.md). it mines your recent t3 th
 
 models are configurable too. type [`/setup-pstack`](./skills/setup-pstack/SKILL.md). it reads the models t3 can run and writes `~/.p3stack/models.md`, mapping each role (code, judgment, the review panels) to a model. every skill reads it and falls back to sensible defaults when a line is absent, so you override only what you want.
 
-when a default changes, a file written before the change still pins the old default until you run `/setup-pstack` again. that run replaces the old defaults it recognizes and keeps any other seat that differs from the default. to drop a pin it does not recognize, delete that role's line or the file first.
+when a default changes, a file written before the change still pins the old default. delete those role lines, or delete the file, then run `/setup-pstack` again. a rerun keeps any role whose model differs from the default.
 
 ## automations
 
