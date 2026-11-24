@@ -27,7 +27,7 @@ two steps:
 
 new here? the [pstack guide](./docs/guide/README.md) walks you through a first real task, from setup and prompting through verification and overnight runs. stuck, or unsure which skill fits? ask [`/poteto-help`](./skills/poteto-help/SKILL.md).
 
-that's it. the other skills are situational, and the mode skill uses them for you as needed. out of the box, code delegates (feature, refactoring, bug fix, perf, hillclimb), prose, and judgment go to opus 5.5 at xhigh in fast mode, with gpt as the fallback, and no role runs above xhigh. outside a review panel, fable 5.2 runs only when you name it or after two runs of the same brief fail. the default panel is fable 5.2 / gpt-6.1-sol / gemini 4 neon, one model from each of three labs. [`/setup-pstack`](./skills/setup-pstack/SKILL.md) changes any of it.
+that's it. the other skills are situational, and the mode skill uses them for you as needed. out of the box, code delegates (feature, refactoring, bug fix, perf, hillclimb), prose, and judgment go to opus 5.5 at xhigh in fast mode, with gpt as the fallback, and no role runs above xhigh. outside a review panel, fable 5.2 runs only when you name it or after two runs of the same brief fail. the default panel is fable 5.2 / opus 5.5 / gemini 4 neon. [`/setup-pstack`](./skills/setup-pstack/SKILL.md) changes any of it.
 
 ## usage
 
@@ -262,7 +262,7 @@ type [`/automate-me`](./skills/automate-me/SKILL.md). it mines your recent t3 th
 
 models are configurable too. type [`/setup-pstack`](./skills/setup-pstack/SKILL.md). it reads the models t3 can run and writes `~/.p3stack/models.md`, mapping each role (code, judgment, the review panels) to a model. every skill reads it and falls back to sensible defaults when a line is absent, so you override only what you want.
 
-when a default changes, a file written before the change still pins the old default. delete those role lines, or delete the file, then run `/setup-pstack` again. a rerun keeps any role whose model differs from the default.
+when a default changes, a file written before the change still pins the old default until you run `/setup-pstack` again. that run replaces the old defaults it recognizes and keeps any other seat that differs from the default. to drop a pin it does not recognize, delete that role's line or the file first.
 
 ## automations
 
