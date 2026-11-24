@@ -15,7 +15,7 @@ Call `orchestrator_capabilities` from the `t3-code` MCP server. Its `models` lis
 
 ### 2. Load current state
 
-The defaults are the file shape in step 5. If `~/.p3stack/models.md` exists, read it and treat its `# budget` line, its role lines, and its `max parallel writers` line as the current choices. Otherwise start from the defaults. A line whose role is not in step 5 is from a retired role. Drop it.
+The defaults are the file shape in step 5. If `~/.p3stack/models.md` exists, read it and treat its `# budget` line, its role lines, and its `max parallel writers` line as the current choices. Otherwise start from the defaults. A line whose role is not in step 5, such as `how explorer` or `why investigators`, is from a retired role. Drop it.
 
 ### 3. Budget, map, and confirm
 
@@ -26,7 +26,7 @@ The defaults are the file shape in step 5. If `~/.p3stack/models.md` exists, rea
 - `medium — high reasoning`
 - `small — medium reasoning`
 
-**(b) Apply it.** Build the working table from the defaults, and on a re-run keep any seat the user changed. `unlimited`, `large`, `medium`, and `small` set the effort of every seat, fallbacks and panel seats included, to `max`, `xhigh`, `high`, or `medium`. A model that doesn't offer the level runs at the highest level it offers below it, so `unlimited` leaves Grok at `xhigh`. `inherit` seats don't change.
+**(b) Apply it.** Build the working table from the defaults, and on a re-run keep any seat the user changed. Each role has a target effort, which is its step 5 effort moved by the budget. `large` keeps it, `unlimited` raises it one step, `medium` lowers it one step, and `small` lowers it two steps, on the ladder `max` > `xhigh` > `high` > `medium` > `low`. A target at either end of the ladder stays there. Most defaults are at `xhigh`, and each budget label names where those land. Set the effort of every seat in the role, fallbacks and panel seats included, to the role's target. A model that doesn't offer the level runs at the highest level it offers below it, so `unlimited` leaves Gemini at `high`. `inherit` seats don't change. So `unlimited` turns `claude-opus-5-5@xhigh` into `claude-opus-5-5@max` and `claude-opus-5-5@high+fast` into `claude-opus-5-5@xhigh+fast`, and it keeps `claude-fable-5-2@max`. `small` turns the first two into `claude-opus-5-5@medium` and `claude-opus-5-5@low+fast`.
 
 **(c) Show the roles and confirm.** Show every role with its seats, including any `via` a seat already has. Mark a seat whose model isn't runnable right now, and name the provider constraint that blocks it. A blocked seat still falls back at spawn time, so it is a warning, not an error. Also list each line step 2 dropped. Ask whether to accept as-is or change specific roles, offering the runnable models plus `inherit` (this role runs on the parent chat's model). For panel roles (`arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers`) the value is a list, and one agent runs per seat, so the list length sets the count. Seat models from different labs, because labs make a panel diverse. `arena cross-judge pool` is also a list, but Arena runs one judge. It tries only seats from a lab other than the parent's, in list order, so order it by preference. An `inherit` seat never judges. `swarm workers` is the default model for every worker unless a race or comparison assigns another model per arm. Ask for `max parallel writers` too, the cap on worktree agents running at once on this machine.
 
@@ -44,23 +44,19 @@ Write `~/.p3stack/models.md` with a `# budget` line naming the chosen label and 
 # p3stack model configuration. One line per role. Delete a line to fall back to the default.
 # A seat is model@effort, +fast for fast mode, via <harness> to pin the provider instance, | between fallbacks. Commas separate panel seats. inherit runs on the parent model.
 # budget: large (xhigh)
-feature, refactoring: grok-4.7@xhigh | gpt-6.1-sol@xhigh
-bug-fix: grok-4.7@xhigh | gpt-6.1-sol@xhigh
-perf-issue: grok-4.7@xhigh | gpt-6.1-sol@xhigh
-hillclimb: grok-4.7@xhigh | gpt-6.1-sol@xhigh
+feature, refactoring: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
+bug-fix: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
+perf-issue: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
+hillclimb: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
 judgment and prose: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
-hardest tasks: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
-how explorer: grok-4.7@xhigh | gpt-6.1-sol@xhigh
-how explainer: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
-why investigators: grok-4.7@xhigh | gpt-6.1-sol@xhigh
-why synthesizer: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
-reflect tooling: grok-4.7@xhigh | gpt-6.1-sol@xhigh
+hardest tasks: claude-fable-5-2@max | gpt-6.1-sol@max
+reflect tooling: claude-opus-5-5@high+fast | gpt-6.1-sol@high+fast
 reflect judgment, divergent, synthesizer: claude-opus-5-5@xhigh | gpt-6.1-sol@xhigh
-arena runners: claude-opus-5-5@xhigh, gpt-6.1-sol@xhigh, grok-4.7@xhigh
-arena cross-judge pool: claude-opus-5-5@xhigh, gpt-6.1-sol@xhigh, grok-4.7@xhigh
-swarm workers: grok-4.7@xhigh+fast | gpt-6.1-sol@xhigh+fast
-architect runners: claude-opus-5-5@xhigh, gpt-6.1-sol@xhigh, grok-4.7@xhigh
-interrogate reviewers: claude-opus-5-5@xhigh, gpt-6.1-sol@xhigh, grok-4.7@xhigh
+arena runners: claude-fable-5-2@high, gpt-6.1-sol@high, gemini-4-carbon@high
+arena cross-judge pool: claude-fable-5-2@high, gpt-6.1-sol@high, gemini-4-carbon@high
+swarm workers: claude-opus-5-5@high+fast | gpt-6.1-sol@high+fast
+architect runners: claude-fable-5-2@high, gpt-6.1-sol@high, gemini-4-carbon@high
+interrogate reviewers: claude-fable-5-2@high, gpt-6.1-sol@high, gemini-4-carbon@high
 max parallel writers: 4
 ```
 

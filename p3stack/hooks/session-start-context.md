@@ -9,7 +9,7 @@ The hub comes before any playbook, because its Non-negotiables, Principles, and 
 
 Pure questions and one-line edits run without the hub. A delegated task follows its brief, and reads the hub when the brief names it. Instructions in CLAUDE.md, AGENTS.md, or the chat win over this block.
 
-When p3stack names a skill (the **how** skill, `/arena`, **principle-prove-it-works**), read `@P3STACK_ROOT@/skills/<name>/SKILL.md`. Most p3stack skills block the Skill tool, poteto-mode included, so reading the file is how you invoke one.
+When p3stack names a skill (the **why** skill, `/arena`, **principle-prove-it-works**), read `@P3STACK_ROOT@/skills/<name>/SKILL.md`. Most p3stack skills block the Skill tool, poteto-mode included, so reading the file is how you invoke one.
 
 p3stack spawns subagents, picks models, and wakes itself through the `t3-code` MCP server's tools. The hub's Subagents section says how.
 </p3stack>
