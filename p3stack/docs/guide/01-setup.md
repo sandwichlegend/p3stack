@@ -16,7 +16,7 @@ Run:
 
 [`/setup-pstack`](../../skills/setup-pstack/SKILL.md) detects the models you have access to, asks for a reasoning budget, shows you each role (code delegates, judgment, the review panels), and asks what you want. Answer the questions. It writes `~/.p3stack/models.md`, a small file every p3stack skill reads. It also tells you which providers T3 Code can't run right now, such as one that isn't signed in.
 
-The defaults are the same as the `large` budget. Most roles run at `xhigh` reasoning. The hardest changes run at `max` on Claude Fable, and the review panels and swarm workers run at `high`. Code, prose, and judgment go to Claude Opus, with GPT through Codex as the fallback. Every review panel seats Claude Fable, GPT, and Gemini, one model from each of three labs, because models from different labs miss different things. `unlimited` raises each role one level, up to `max`. Gemini tops out at `high`, so it stays there. `medium` lowers each role one level and `small` lowers it two, and both spend fewer tokens.
+The defaults are the same as the `large` budget. Code, prose, and judgment run on Claude Opus at `xhigh` reasoning in fast mode, with GPT through Codex as the fallback, and the review panels and swarm workers run at `high`. No role runs above `xhigh`. Every review panel seats Claude Fable, GPT, and Gemini, one model from each of three labs, because models from different labs miss different things. Outside a review panel, Claude Fable runs only when you name it for a task or after two runs of the same brief fail their check. `medium` lowers each role one level and `small` lowers it two, and both spend fewer tokens.
 
 You only override what you care about. A role with no line in the file keeps the default. To restore a default, delete that role's line. A rerun of `/setup-pstack` keeps any seat you changed. When a default changes, a file written before the change still pins the old default, so delete those role lines, or delete the file, then run `/setup-pstack` again.
 
@@ -52,7 +52,7 @@ Pick something real but small, and describe it the way you'd describe it to a co
 /poteto-mode add a --json flag to this command. text output stays byte-identical. verify both.
 ```
 
-Watch the todo list. Its first items are the matched playbook's steps copied in, the Feature playbook for this prompt. If `/poteto-mode` skips a step, the step stays in the list with `skip: <reason>`, so you can see what it chose not to do.
+Watch the todo list. Its first items are the matched playbook's steps copied in, the Feature playbook for this prompt.
 
 From here you can type normal follow-ups. In Claude Code, Codex, and OpenCode threads, the p3stack startup context tells the agent to read `/poteto-mode` for every non-trivial engineering task, so it stays on without retyping. Cursor threads don't get it, so start each new task there with `/poteto-mode`.
 
